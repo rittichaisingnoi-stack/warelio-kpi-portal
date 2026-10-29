@@ -237,18 +237,18 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
-  cleaned TEXT := REGEXP_REPLACE(TRIM(query_text), ';\s*$', '');
-  trimmed TEXT := LTRIM(REGEXP_REPLACE(cleaned, '/\*.*?\*/|--.*?\n', '', 'g'));
-  upper_q TEXT := UPPER(trimmed);
+  cleaned TEXT := REGEXP_REPLACE(query_text, '^\s+|;\s*$|\s+$', '', 'g');
+  no_comments TEXT := REGEXP_REPLACE(cleaned, '^(\s|/\*.*?\*/|--[^\n]*\n)+', '', 'g');
+  upper_q TEXT := UPPER(no_comments);
   result_rows JSONB := '[]'::jsonb;
   affected_count INT := 0;
 BEGIN
   IF upper_q LIKE 'SELECT%' OR upper_q LIKE 'WITH%' THEN
-    EXECUTE 'SELECT COALESCE(jsonb_agg(row_to_json(_t)), ''[]''::jsonb) FROM (' || cleaned || ') _t'
+    EXECUTE 'SELECT COALESCE(jsonb_agg(row_to_json(_t)), ''[]''::jsonb) FROM (' || cleaned || E'\n) _t'
     INTO result_rows;
     affected_count := jsonb_array_length(result_rows);
   ELSIF upper_q ~ '\mRETURNING\M' THEN
-    EXECUTE 'WITH _t AS (' || cleaned || ') SELECT COALESCE(jsonb_agg(row_to_json(_t)), ''[]''::jsonb) FROM _t'
+    EXECUTE 'WITH _t AS (' || cleaned || E'\n) SELECT COALESCE(jsonb_agg(row_to_json(_t)), ''[]''::jsonb) FROM _t'
     INTO result_rows;
     affected_count := jsonb_array_length(result_rows);
   ELSE

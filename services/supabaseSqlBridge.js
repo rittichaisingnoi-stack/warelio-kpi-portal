@@ -39,7 +39,7 @@ function createSupabaseRestPool({ supabaseUrl, supabaseKey }) {
       return { rows: [], rowCount: 0 };
     }
 
-    const finalSql = formatSqlQuery(sql, params);
+    const finalSql = formatSqlQuery(sql, params).trim();
     const rpcUrl = `${cleanUrl}/rest/v1/rpc/kpi_exec_sql`;
 
     const headers = {
