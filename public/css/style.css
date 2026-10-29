@@ -670,7 +670,8 @@ body {
   padding: 16px;
 }
 
-.modal-overlay.active {
+.modal-overlay.active,
+.modal-overlay.show {
   opacity: 1;
   pointer-events: auto;
 }
@@ -689,7 +690,8 @@ body {
   transition: transform 0.2s ease;
 }
 
-.modal-overlay.active .modal-container {
+.modal-overlay.active .modal-container,
+.modal-overlay.show .modal-container {
   transform: translateY(0);
 }
 

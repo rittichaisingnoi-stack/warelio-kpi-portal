@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Warelio KPI & Scoring Portal | ระบบประเมินผลและคะแนนพนักงาน</title>
-  <link rel="stylesheet" href="css/style.css?v=20261029_kanit">
+  <link rel="stylesheet" href="css/style.css?v=20261029_stations_fix2">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
 </head>
@@ -1179,10 +1179,10 @@
   </div>
 
   <!-- Modal: Assign Employee to Difficult Station -->
-  <div class="modal-overlay" id="assignStationModal">
+  <div class="modal-overlay" id="assignStationModal" onclick="if(event.target===this)closeAssignStationModal()">
     <div class="modal-container" style="max-width: 500px;">
       <div class="modal-header">
-        <h3 class="modal-title">กำหนดพนักงานประจำจุดจ่ายงานยาก</h3>
+        <h3 class="modal-title"><i class="fa-solid fa-user-plus" style="color: #2563EB;"></i> กำหนดจุดจ่ายงานให้พนักงาน</h3>
         <button class="btn-close" onclick="closeAssignStationModal()">&times;</button>
       </div>
       <form id="assignStationForm" onsubmit="submitAssignStation(event)">
@@ -1462,7 +1462,7 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=20261029_stations"></script>
+  <script src="js/app.js?v=20261029_stations_fix2"></script>
 </body>
 
 </html>

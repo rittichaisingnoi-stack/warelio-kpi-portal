@@ -3227,11 +3227,29 @@ async function openAssignStationModal(presetEmCode = null) {
   if (searchInput) searchInput.value = '';
   if (remarkInput) remarkInput.value = '';
 
+  // โหลดตัวเลือกจุดจ่ายงานยาก หากยังไม่มี
+  if (!allStationConfigs || allStationConfigs.length === 0) {
+    try {
+      const stRes = await fetch('/api/kpi/stations');
+      const stJson = await stRes.json();
+      if (stJson.success && Array.isArray(stJson.stations)) {
+        allStationConfigs = stJson.stations;
+      }
+    } catch (e) {
+      console.warn('Error loading stations:', e);
+    }
+  }
+
   // โหลดรายชื่อพนักงาน
   const emps = await loadEmployeesForStationModal();
   if (empSelect) {
     empSelect.innerHTML = '<option value="">-- เลือกรหัส / ชื่อพนักงาน --</option>' +
-      emps.map(e => `<option value="${escapeHtmlAttr(e.id_emp)}" data-name="${escapeHtmlAttr(e.name_th)}" data-dept="${escapeHtmlAttr(e.team || e.grp || '-')}">${escapeHtmlAttr(e.id_emp)} - ${escapeHtmlAttr(e.name_th)} (${escapeHtmlAttr(e.team || e.grp || '-')})</option>`).join('');
+      emps.map(e => {
+        const code = e.em_code || e.id_emp || '';
+        const name = e.name_th || code;
+        const dept = e.dept || e.team || e.grp || '-';
+        return `<option value="${escapeHtmlAttr(code)}" data-name="${escapeHtmlAttr(name)}" data-dept="${escapeHtmlAttr(dept)}">${escapeHtmlAttr(code)} - ${escapeHtmlAttr(name)} (${escapeHtmlAttr(dept)})</option>`;
+      }).join('');
     if (presetEmCode) {
       empSelect.value = presetEmCode;
     }
@@ -3241,7 +3259,7 @@ async function openAssignStationModal(presetEmCode = null) {
   if (stationSelect) {
     stationSelect.innerHTML = `
       <option value="">-- จุดจ่ายทั่วไป (0 แต้ม) --</option>
-      ${allStationConfigs.filter(c => c.is_active !== false).map(c => `
+      ${(allStationConfigs || []).filter(c => c.is_active !== false).map(c => `
         <option value="${escapeHtmlAttr(c.station_code)}" data-pts="${c.bonus_points}">
           ${escapeHtmlAttr(c.station_name)} (+${parseFloat(c.bonus_points).toFixed(1)} แต้ม)
         </option>
@@ -3260,12 +3278,16 @@ async function openAssignStationModal(presetEmCode = null) {
 
   onAssignStationCodeChanged();
   onAssignStationEmpSelected();
+  modal.classList.add('active');
   modal.classList.add('show');
 }
 
 function closeAssignStationModal() {
   const modal = document.getElementById('assignStationModal');
-  if (modal) modal.classList.remove('show');
+  if (modal) {
+    modal.classList.remove('active');
+    modal.classList.remove('show');
+  }
 }
 
 function filterAssignStationEmployees() {
