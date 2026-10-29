@@ -989,7 +989,9 @@ async function savePolicySettings(event) {
     const targetLabel = `${deptCode === 'GLOBAL' ? 'เกณฑ์มาตรฐานกลาง' : 'แผนก ' + deptCode} (${positionName === 'ALL' ? 'ทุกตำแหน่ง' : 'ตำแหน่ง ' + positionName})`;
     alert(`บันทึกเกณฑ์คะแนนสำหรับ [${targetLabel}] เรียบร้อย!\n(วันหยุดสัปดาห์: ${formatDayOffNames(weeklyOffDays)})`);
     closePolicyModal();
-    loadPolicies();
+    await loadPolicies();
+    loadHolidays();
+    loadSummaryData();
   } catch (err) {
     alert('เกิดข้อผิดพลาด: ' + err.message);
   }
@@ -1003,7 +1005,9 @@ async function deletePolicy(policyId, label) {
     const json = await res.json();
     if (!json.success) throw new Error(json.message);
     alert('ลบเกณฑ์เฉพาะเรียบร้อย!');
-    loadPolicies();
+    await loadPolicies();
+    loadHolidays();
+    loadSummaryData();
   } catch (err) {
     alert('เกิดข้อผิดพลาด: ' + err.message);
   }
@@ -1480,6 +1484,20 @@ async function loadHolidays() {
     const json = await res.json();
     if (!json.success) return;
 
+    const globalPolicy = (loadedPolicies || []).find(p => p.dept_code === 'GLOBAL' && (p.position_name || 'ALL') === 'ALL')
+      || (loadedPolicies || []).find(p => p.dept_code === 'GLOBAL');
+    const rawBonus = (json.public_holiday_bonus !== undefined && json.public_holiday_bonus !== null)
+      ? json.public_holiday_bonus
+      : (globalPolicy && globalPolicy.public_holiday_bonus !== undefined ? globalPolicy.public_holiday_bonus : 3.0);
+    const bonusNum = parseFloat(rawBonus);
+    const bonusFormatted = `+${(isNaN(bonusNum) ? 3.0 : bonusNum).toFixed(2)} แต้ม/วัน`;
+    const scopeLabel = json.has_custom_dept_bonus ? '(เกณฑ์กลาง / มีแยกตามแผนก)' : '(เท่ากันทั้งบริษัท)';
+
+    const subtitleRateEl = document.getElementById('holidayBonusSubtitleRate');
+    if (subtitleRateEl) {
+      subtitleRateEl.innerText = bonusFormatted;
+    }
+
     const tbody = document.getElementById('holidaysTableBody');
     if (!tbody) return;
     tbody.innerHTML = '';
@@ -1503,7 +1521,7 @@ async function loadHolidays() {
           <i class="fa-regular fa-calendar-days" style="margin-right: 6px;"></i> ${dateTh}
         </td>
         <td style="font-weight: 600; font-size: 14px;">${h.holiday_name}</td>
-        <td style="color: #10B981; font-weight: 700;">+3.00 แต้ม/วัน (เท่ากันทั้งบริษัท)</td>
+        <td style="color: #10B981; font-weight: 700;">${bonusFormatted} ${scopeLabel}</td>
         <td style="color: #64748B; font-size: 13px;">${h.description || '-'}</td>
         <td>
           <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px; color: #EF4444;" onclick="deleteHoliday(${h.holiday_id}, '${h.holiday_name.replace(/'/g, "\\'")}')">
@@ -1599,6 +1617,7 @@ async function saveHoliday(event) {
     const yearSelect = document.getElementById('holidayYearSelect');
     if (yearSelect) yearSelect.value = year.toString();
     loadHolidays();
+    loadSummaryData();
   } catch (err) {
     alert('เกิดข้อผิดพลาด: ' + err.message);
   }
@@ -1614,6 +1633,7 @@ async function deleteHoliday(holidayId, holidayName) {
 
     alert('ลบวันหยุดเรียบร้อย!');
     loadHolidays();
+    loadSummaryData();
   } catch (err) {
     alert('เกิดข้อผิดพลาด: ' + err.message);
   }

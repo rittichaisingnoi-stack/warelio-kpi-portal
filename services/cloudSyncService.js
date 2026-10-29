@@ -325,11 +325,17 @@ class CloudSyncService {
       }
       stats.pushed_users = usrRes.rows.length;
 
-      // 3.3 ซิงค์ข้อมูลลาป่วย (tb_manpower_data เฉพาะสถานะป่วย) แบบ Batch Chunk
+      // 3.3 ซิงค์ข้อมูลลาป่วยและข้อมูลมาทำงานวันหยุดนักขัตฤกษ์ (tb_manpower_data) แบบ Batch Chunk
       const mpSickRes = await pool.query(`
-        SELECT DISTINCT ON (id_emp, date_plan) id_emp, date_plan, status, remark, overtime, team_sc, shift_plan, updatetime, id_update
-        FROM tb_manpower_data
-        WHERE status = 'ป่วย' AND id_emp IS NOT NULL AND date_plan IS NOT NULL;
+        SELECT DISTINCT ON (m.id_emp, m.date_plan)
+          m.id_emp, m.date_plan, m.status, m.remark, m.overtime, m.team_sc, m.shift_plan, m.updatetime, m.id_update
+        FROM tb_manpower_data m
+        LEFT JOIN kpi_public_holidays h ON m.date_plan = TO_CHAR(h.holiday_date, 'DD/MM/YYYY')
+        WHERE m.id_emp IS NOT NULL AND m.date_plan IS NOT NULL
+          AND (
+            m.status = 'ป่วย'
+            OR (h.holiday_id IS NOT NULL AND m.status IN ('ทำงาน', 'มาทำงาน', 'มาสาย', 'สาย', 'WFH', 'นอกสถานที่', 'ร่มเกล้า'))
+          );
       `).catch(() => ({ rows: [] }));
       const mpChunkSize = 80;
       for (let i = 0; i < mpSickRes.rows.length; i += mpChunkSize) {

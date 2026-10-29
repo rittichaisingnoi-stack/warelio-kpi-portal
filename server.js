@@ -898,7 +898,22 @@ app.get('/api/kpi/holidays', async (req, res) => {
     query += ` ORDER BY holiday_date ASC;`;
 
     const holidays = await pool.query(query, params);
-    res.json({ success: true, holidays: holidays.rows });
+    const policiesMap = await scoringEngine.getPolicies(period.period_id);
+    const globalPolicy = scoringEngine.resolvePolicy(policiesMap, 'GLOBAL', 'ALL');
+    const rawGlobalBonus = globalPolicy && globalPolicy.public_holiday_bonus !== undefined && globalPolicy.public_holiday_bonus !== null
+      ? parseFloat(globalPolicy.public_holiday_bonus)
+      : 3.0;
+    const publicHolidayBonus = isNaN(rawGlobalBonus) ? 3.0 : rawGlobalBonus;
+    const hasCustomDeptBonus = Object.values(policiesMap || {}).some(
+      p => p.dept_code !== 'GLOBAL' && parseFloat(p.public_holiday_bonus) !== publicHolidayBonus
+    );
+
+    res.json({
+      success: true,
+      holidays: holidays.rows,
+      public_holiday_bonus: publicHolidayBonus,
+      has_custom_dept_bonus: hasCustomDeptBonus
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -922,6 +937,8 @@ app.post('/api/kpi/holidays', async (req, res) => {
         description = EXCLUDED.description
       RETURNING holiday_id, period_id, holiday_year, TO_CHAR(holiday_date, 'YYYY-MM-DD') as holiday_date, holiday_name, description;
     `, [period.period_id, holiday_date, computedYear, holiday_name, description || null]);
+
+    await scoringEngine.calculateScores();
     res.json({ success: true, holiday: result.rows[0] });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -932,6 +949,7 @@ app.delete('/api/kpi/holidays/:id', async (req, res) => {
   try {
     const { id } = req.params;
     await pool.query(`DELETE FROM kpi_public_holidays WHERE holiday_id = $1;`, [id]);
+    await scoringEngine.calculateScores();
     res.json({ success: true, message: 'ลบวันหยุดเรียบร้อย' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

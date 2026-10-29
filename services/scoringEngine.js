@@ -144,7 +144,7 @@ class ScoringEngine {
       query += ` ORDER BY trans_date ASC;`;
 
       // ตรวจสอบว่าตาราง tb_manpower_data มีข้อมูลอยู่หรือไม่ (ป้องกันกรณีรันบน Cloud ที่อาจยังไม่ได้ซิงค์ตารางดิบ)
-      const mpCountRes = await pool.query(`SELECT COUNT(*)::int as cnt FROM tb_manpower_data;`).catch(() => ({ rows: [{ cnt: 0 }] }));
+      const mpCountRes = await pool.query(`SELECT COUNT(*)::int as cnt FROM tb_manpower_data WHERE status = 'ป่วย';`).catch(() => ({ rows: [{ cnt: 0 }] }));
       const hasManpowerTableData = (mpCountRes.rows[0]?.cnt || 0) > 0;
       if (!hasManpowerTableData && pool.isCloudInstance) {
         return;
@@ -159,6 +159,7 @@ class ScoringEngine {
       `).catch(() => {});
 
       const activeSyncIds = [];
+      const upsertRows = [];
 
       for (const row of sickRows.rows) {
         const emCode = row.id_emp;
@@ -172,6 +173,25 @@ class ScoringEngine {
 
         const deductPoints = -Math.abs(sickRate);
         const desc = `ลาป่วย (Auto Deduct: ${datePlan})${row.remark ? ' - ' + row.remark : ''}`;
+        upsertRows.push({
+          periodId,
+          emCode,
+          transDate: row.trans_date,
+          desc,
+          deductPoints,
+          syncId
+        });
+      }
+
+      const chunkSize = 80;
+      for (let i = 0; i < upsertRows.length; i += chunkSize) {
+        const chunk = upsertRows.slice(i, i + chunkSize);
+        const vals = [];
+        const placeholders = chunk.map((item, idx) => {
+          const base = idx * 6;
+          vals.push(item.periodId, item.emCode, item.transDate, item.desc, item.deductPoints, item.syncId);
+          return `($${base + 1}, $${base + 2}, $${base + 3}, 'AUTO', 'SICK_LEAVE', $${base + 4}, $${base + 5}, 'SYSTEM', CURRENT_TIMESTAMP, $${base + 6})`;
+        }).join(', ');
 
         await pool.query(`
           INSERT INTO kpi_score_transactions (
@@ -179,11 +199,11 @@ class ScoringEngine {
             reason_code, reason_description, points_change,
             created_by, created_at, cloud_sync_id
           )
-          VALUES ($1, $2, $3, 'AUTO', 'SICK_LEAVE', $4, $5, 'SYSTEM', CURRENT_TIMESTAMP, $6)
+          VALUES ${placeholders}
           ON CONFLICT (period_id, cloud_sync_id) DO UPDATE SET
             points_change = EXCLUDED.points_change,
             reason_description = EXCLUDED.reason_description;
-        `, [periodId, emCode, row.trans_date, desc, deductPoints, syncId]);
+        `, vals);
       }
 
       // ลบรายการที่ถูกยกเลิกสถานะป่วยออกไป
@@ -220,6 +240,144 @@ class ScoringEngine {
   }
 
   /**
+   * ซิงค์การบวกคะแนนอัตโนมัติเมื่อมาทำงานในวันหยุดนักขัตฤกษ์ (Public Holiday Working Bonus)
+   */
+  async syncPublicHolidayBonuses(period, policiesMap, options = {}) {
+    try {
+      const periodId = period.period_id;
+      let query = `
+        SELECT DISTINCT ON (m.id_emp, m.date_plan)
+          m.id_emp,
+          m.date_plan,
+          TO_DATE(m.date_plan, 'DD/MM/YYYY') as trans_date,
+          h.holiday_name,
+          e.team, e.grp, e.position_name
+        FROM tb_manpower_data m
+        JOIN employee_whc e ON m.id_emp = e.id_emp
+        JOIN kpi_public_holidays h
+          ON m.date_plan = TO_CHAR(h.holiday_date, 'DD/MM/YYYY')
+          AND h.period_id = $1
+        WHERE m.status IN ('ทำงาน', 'มาทำงาน', 'มาสาย', 'สาย', 'WFH', 'นอกสถานที่', 'ร่มเกล้า')
+          AND m.date_plan ~ '^[0-9]{2}/[0-9]{2}/[0-9]{4}$'
+          AND h.holiday_date BETWEEN $2 AND $3
+          AND h.holiday_date <= CURRENT_DATE
+      `;
+      const params = [periodId, period.start_date, period.end_date];
+      if (options.emCode) {
+        params.push(options.emCode);
+        query += ` AND m.id_emp = $${params.length}`;
+      }
+      query += ` ORDER BY m.id_emp, m.date_plan, trans_date ASC;`;
+
+      const mpWorkCountRes = await pool.query(`
+        SELECT COUNT(*)::int as cnt FROM tb_manpower_data
+        WHERE status IN ('ทำงาน', 'มาทำงาน', 'มาสาย', 'สาย', 'WFH', 'นอกสถานที่', 'ร่มเกล้า');
+      `).catch(() => ({ rows: [{ cnt: 0 }] }));
+      const hasManpowerWorkData = (mpWorkCountRes.rows[0]?.cnt || 0) > 0;
+      if (!hasManpowerWorkData && pool.isCloudInstance) {
+        const globalPol = this.resolvePolicy(policiesMap, 'GLOBAL', 'ALL');
+        const globalBonus = Math.abs(parseFloat(globalPol.public_holiday_bonus !== undefined ? globalPol.public_holiday_bonus : 3.0));
+        await pool.query(`
+          UPDATE kpi_score_transactions
+          SET points_change = $1
+          WHERE period_id = $2 AND reason_code = 'PUBLIC_HOLIDAY_WORK' AND source_type = 'AUTO';
+        `, [globalBonus, periodId]).catch(() => {});
+        return;
+      }
+
+      const workRows = await pool.query(query, params);
+
+      await pool.query(`
+        ALTER TABLE kpi_score_transactions 
+        ADD CONSTRAINT uq_kpi_trans_period_sync UNIQUE (period_id, cloud_sync_id);
+      `).catch(() => {});
+
+      const activeSyncIds = [];
+      const upsertRows = [];
+
+      for (const row of workRows.rows) {
+        const emCode = row.id_emp;
+        const deptCode = row.team || row.grp || 'GENERAL';
+        const policy = this.resolvePolicy(policiesMap, deptCode, row.position_name);
+        const bonusRate = parseFloat(
+          policy.public_holiday_bonus !== undefined && policy.public_holiday_bonus !== null
+            ? policy.public_holiday_bonus
+            : 3.0
+        );
+
+        const datePlan = row.date_plan; // 'DD/MM/YYYY'
+        const syncId = `AUTO_PUB_HOL_${emCode}_${datePlan.split('/').join('')}`;
+        activeSyncIds.push(syncId);
+
+        const bonusPoints = Math.abs(isNaN(bonusRate) ? 3.0 : bonusRate);
+        const desc = `มาทำงานวันหยุดนักขัตฤกษ์ (Auto Bonus: ${datePlan} - ${row.holiday_name})`;
+        upsertRows.push({
+          periodId,
+          emCode,
+          transDate: row.trans_date,
+          desc,
+          bonusPoints,
+          syncId
+        });
+      }
+
+      const chunkSize = 80;
+      for (let i = 0; i < upsertRows.length; i += chunkSize) {
+        const chunk = upsertRows.slice(i, i + chunkSize);
+        const vals = [];
+        const placeholders = chunk.map((item, idx) => {
+          const base = idx * 6;
+          vals.push(item.periodId, item.emCode, item.transDate, item.desc, item.bonusPoints, item.syncId);
+          return `($${base + 1}, $${base + 2}, $${base + 3}, 'AUTO', 'PUBLIC_HOLIDAY_WORK', $${base + 4}, $${base + 5}, 'SYSTEM', CURRENT_TIMESTAMP, $${base + 6})`;
+        }).join(', ');
+
+        await pool.query(`
+          INSERT INTO kpi_score_transactions (
+            period_id, em_code, transaction_date, source_type,
+            reason_code, reason_description, points_change,
+            created_by, created_at, cloud_sync_id
+          )
+          VALUES ${placeholders}
+          ON CONFLICT (period_id, cloud_sync_id) DO UPDATE SET
+            points_change = EXCLUDED.points_change,
+            reason_description = EXCLUDED.reason_description;
+        `, vals);
+      }
+
+      // ลบรายการวันหยุดนักขัตฤกษ์ที่ถูกลบหรือยกเลิกสถานะมาทำงานออกไป
+      if (options.emCode) {
+        if (activeSyncIds.length > 0) {
+          await pool.query(`
+            DELETE FROM kpi_score_transactions
+            WHERE period_id = $1 AND em_code = $2 AND reason_code = 'PUBLIC_HOLIDAY_WORK' AND source_type = 'AUTO'
+              AND cloud_sync_id NOT IN (${activeSyncIds.map((_, i) => `$${i + 3}`).join(',')});
+          `, [periodId, options.emCode, ...activeSyncIds]);
+        } else {
+          await pool.query(`
+            DELETE FROM kpi_score_transactions
+            WHERE period_id = $1 AND em_code = $2 AND reason_code = 'PUBLIC_HOLIDAY_WORK' AND source_type = 'AUTO';
+          `, [periodId, options.emCode]);
+        }
+      } else {
+        if (activeSyncIds.length > 0) {
+          await pool.query(`
+            DELETE FROM kpi_score_transactions
+            WHERE period_id = $1 AND reason_code = 'PUBLIC_HOLIDAY_WORK' AND source_type = 'AUTO'
+              AND cloud_sync_id NOT IN (${activeSyncIds.map((_, i) => `$${i + 2}`).join(',')});
+          `, [periodId, ...activeSyncIds]);
+        } else {
+          await pool.query(`
+            DELETE FROM kpi_score_transactions
+            WHERE period_id = $1 AND reason_code = 'PUBLIC_HOLIDAY_WORK' AND source_type = 'AUTO';
+          `, [periodId]);
+        }
+      }
+    } catch (err) {
+      console.error('Error syncing public holiday bonuses:', err);
+    }
+  }
+
+  /**
    * คำนวณคะแนนพนักงานทุกคน หรือเฉพาะเงื่อนไขที่ระบุ (Recalculate Engine)
    */
   async calculateScores(options = {}) {
@@ -229,8 +387,9 @@ class ScoringEngine {
     const policiesMap = await this.getPolicies(periodId);
     const configs = await this.getSystemConfigs();
 
-    // 0. ซิงค์การหักคะแนนอัตโนมัติจากวันลาป่วย (Sick Leave Auto-Deductions) จาก tb_manpower_data
+    // 0. ซิงค์การหักคะแนนอัตโนมัติจากวันลาป่วย (Sick Leave Auto-Deductions) และบวกคะแนนมาทำงานวันหยุดนักขัตฤกษ์ (Public Holiday Working Bonus)
     await this.syncSickLeaveDeductions(period, policiesMap, options);
+    await this.syncPublicHolidayBonuses(period, policiesMap, options);
 
     // 1. ดึงรายชื่อพนักงานทั้งหมดจาก employee_whc
     let empQuery = `SELECT id_emp, name_th, position_name, team, grp FROM employee_whc WHERE id_emp IS NOT NULL`;
@@ -349,24 +508,8 @@ class ScoringEngine {
       const netScore = Math.max(0, initialScore - totalDeducted + totalAdded);
       const grade = this.calculateGrade(netScore, configs);
 
-      // บันทึกลงตาราง kpi_employee_summary
-      await pool.query(`
-        INSERT INTO kpi_employee_summary (
-          period_id, em_code, dept_code, initial_score, 
-          total_deducted, total_added, net_score, current_grade, last_recalculated
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)
-        ON CONFLICT (period_id, em_code) DO UPDATE SET
-          dept_code = EXCLUDED.dept_code,
-          initial_score = EXCLUDED.initial_score,
-          total_deducted = EXCLUDED.total_deducted,
-          total_added = EXCLUDED.total_added,
-          net_score = EXCLUDED.net_score,
-          current_grade = EXCLUDED.current_grade,
-          last_recalculated = CURRENT_TIMESTAMP;
-      `, [periodId, emCode, deptCode, initialScore, totalDeducted, totalAdded, netScore, grade]);
-
       results.push({
+        period_id: periodId,
         em_code: emCode,
         name_th: emp.name_th,
         position_name: emp.position_name,
@@ -377,6 +520,34 @@ class ScoringEngine {
         net_score: netScore,
         current_grade: grade
       });
+    }
+
+    // บันทึกลงตาราง kpi_employee_summary แบบ Batch Chunk
+    const sumChunkSize = 80;
+    for (let i = 0; i < results.length; i += sumChunkSize) {
+      const chunk = results.slice(i, i + sumChunkSize);
+      const vals = [];
+      const placeholders = chunk.map((r, idx) => {
+        const base = idx * 8;
+        vals.push(r.period_id, r.em_code, r.team, r.initial_score, r.total_deducted, r.total_added, r.net_score, r.current_grade);
+        return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, CURRENT_TIMESTAMP)`;
+      }).join(', ');
+
+      await pool.query(`
+        INSERT INTO kpi_employee_summary (
+          period_id, em_code, dept_code, initial_score, 
+          total_deducted, total_added, net_score, current_grade, last_recalculated
+        )
+        VALUES ${placeholders}
+        ON CONFLICT (period_id, em_code) DO UPDATE SET
+          dept_code = EXCLUDED.dept_code,
+          initial_score = EXCLUDED.initial_score,
+          total_deducted = EXCLUDED.total_deducted,
+          total_added = EXCLUDED.total_added,
+          net_score = EXCLUDED.net_score,
+          current_grade = EXCLUDED.current_grade,
+          last_recalculated = CURRENT_TIMESTAMP;
+      `, vals);
     }
 
     return {
