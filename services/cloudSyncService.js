@@ -228,6 +228,7 @@ class CloudSyncService {
           )
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
           ON CONFLICT (period_id, cloud_sync_id) DO UPDATE SET
+            transaction_date = EXCLUDED.transaction_date,
             points_change = EXCLUDED.points_change,
             reason_description = EXCLUDED.reason_description,
             attachment_url = COALESCE(EXCLUDED.attachment_url, kpi_score_transactions.attachment_url)

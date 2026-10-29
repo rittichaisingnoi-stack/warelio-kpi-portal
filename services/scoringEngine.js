@@ -561,12 +561,24 @@ class ScoringEngine {
    * บันทึกรายการปรับคะแนน Manual
    */
   async recordManualAdjustment(data) {
-    const { period_id, em_code, point_type, points, reason_code, reason_description, attachment_url, created_by } = data;
+    const { period_id, em_code, point_type, points, reason_code, reason_description, attachment_url, created_by, transaction_date } = data;
     
     // กำหนดเครื่องหมายคะแนน (+ หรือ -)
     const signedPoints = point_type === 'DEDUCT' ? -Math.abs(parseFloat(points)) : Math.abs(parseFloat(points));
     const originPrefix = pool.isCloudInstance ? 'CLOUD' : 'LOCAL';
     const syncId = data.cloud_sync_id || `${originPrefix}_MANUAL_${Date.now()}_${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+
+    // ตรวจสอบวันที่เกิดเหตุ/ทำรายการ (ถ้าไม่ระบุให้ใช้วันปัจจุบันตามเวลาท้องถิ่น)
+    let txDateValue = null;
+    if (transaction_date && typeof transaction_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(transaction_date.trim())) {
+      txDateValue = transaction_date.trim();
+    } else {
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      txDateValue = `${yyyy}-${mm}-${dd}`;
+    }
 
     // ขยายคอลัมน์ attachment_url ให้เป็น TEXT เพื่อรองรับรูป Base64 ข้าม Cloud/Local
     await pool.query(`ALTER TABLE kpi_score_transactions ALTER COLUMN attachment_url TYPE TEXT;`).catch(() => {});
@@ -577,9 +589,9 @@ class ScoringEngine {
         reason_code, reason_description, points_change,
         attachment_url, created_by, created_at, cloud_sync_id
       )
-      VALUES ($1, $2, CURRENT_DATE, 'MANUAL', $3, $4, $5, $6, $7, CURRENT_TIMESTAMP, $8)
+      VALUES ($1, $2, $3::date, 'MANUAL', $4, $5, $6, $7, $8, CURRENT_TIMESTAMP, $9)
       RETURNING *;
-    `, [period_id, em_code, reason_code, reason_description, signedPoints, attachment_url, created_by || 'SUPERVISOR', syncId]);
+    `, [period_id, em_code, txDateValue, reason_code, reason_description, signedPoints, attachment_url, created_by || 'SUPERVISOR', syncId]);
 
     // คำนวณสรุปคะแนนของพนักงานคนนี้ใหม่ทันที
     await this.calculateScores({ emCode: em_code });

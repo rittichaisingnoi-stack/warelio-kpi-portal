@@ -1,150 +1,167 @@
 <!DOCTYPE html>
 <html lang="th">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Warelio KPI & Scoring Portal | ระบบคะแนนพนักงาน</title>
-  <link rel="stylesheet" href="css/style.css">
+  <title>Warelio KPI & Scoring Portal | ระบบประเมินผลและคะแนนพนักงาน</title>
+  <link rel="stylesheet" href="css/style.css?v=20261029_pro">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
 </head>
+
 <body>
 
   <!-- Sidebar -->
   <aside class="sidebar">
     <div class="brand">
       <div class="brand-icon">
-        <i class="fa-solid fa-award"></i>
+        <i class="fa-solid fa-chart-Simple" style="display:none;"></i>
+        <i class="fa-solid fa-layer-group"></i>
       </div>
       <div>
-        <div class="brand-title">Warelio KPI</div>
-        <span class="brand-badge">Employee Scoring</span>
+        <div class="brand-title">WARELIO KPI</div>
+        <div class="brand-badge">Performance System</div>
       </div>
     </div>
 
     <nav class="menu">
+      <div class="menu-section-label">การติดตามและประเมินผล</div>
       <a class="nav-link active" onclick="switchTab('dashboard')">
-        <i class="fa-solid fa-chart-pie"></i>
+        <i class="fa-solid fa-table-columns"></i>
         <span>แดชบอร์ดภาพรวม</span>
       </a>
       <a class="nav-link" onclick="switchTab('transactions')" id="navLinkTransactions">
-        <i class="fa-solid fa-receipt"></i>
-        <span>ดูประวัติคะแนนรายคน (Transactions)</span>
+        <i class="fa-solid fa-file-lines"></i>
+        <span>ประวัติคะแนนรายบุคคล</span>
       </a>
       <a class="nav-link" onclick="openAdjustModal()">
         <i class="fa-solid fa-sliders"></i>
-        <span>ปรับคะแนน (Manual)</span>
+        <span>บันทึกปรับคะแนน (Manual)</span>
       </a>
+      <a class="nav-link" onclick="switchTab('stations')">
+        <i class="fa-solid fa-briefcase"></i>
+        <span>จุดจ่ายงานยาก & สกิลพิเศษ</span>
+      </a>
+
+      <div class="menu-section-label">ตั้งค่าเกณฑ์และระบบ</div>
       <a class="nav-link" onclick="switchTab('policies')">
         <i class="fa-solid fa-building-user"></i>
         <span>เกณฑ์คะแนนตามแผนก</span>
       </a>
       <a class="nav-link" onclick="switchTab('periods')">
-        <i class="fa-solid fa-calendar-days"></i>
+        <i class="fa-solid fa-calendar-check"></i>
         <span>รอบการประเมิน (Period)</span>
       </a>
       <a class="nav-link" onclick="switchTab('presets')">
         <i class="fa-solid fa-list-check"></i>
-        <span>จัดการตัวเลือกเหตุผล</span>
+        <span>รายการเหตุผลมาตรฐาน</span>
       </a>
       <a class="nav-link" onclick="switchTab('holidays')">
-        <i class="fa-solid fa-umbrella-beach"></i>
+        <i class="fa-regular fa-calendar-days"></i>
         <span>ปฏิทินวันหยุดนักขัตฤกษ์</span>
       </a>
-      <a class="nav-link" onclick="switchTab('stations')">
-        <i class="fa-solid fa-award"></i>
-        <span>จุดจ่ายงานยาก & สกิลพิเศษ</span>
-      </a>
+
+      <div class="menu-section-label">ช่องทางพนักงาน</div>
       <a class="nav-link" href="mobile.html" target="_blank">
-        <i class="fa-solid fa-mobile-screen"></i>
-        <span>เปิดหน้าจอมือถือ (PWA)</span>
+        <i class="fa-solid fa-mobile-screen-button"></i>
+        <span>ระบบดูคะแนนบนมือถือ</span>
       </a>
     </nav>
   </aside>
 
   <!-- Main Content -->
   <main class="main-content">
-    
+
     <!-- Top Header -->
     <header class="top-header">
       <div class="header-left">
         <h1 class="page-title" id="pageTitle">แดชบอร์ดสรุปคะแนนพนักงาน & KPI</h1>
-        <span class="badge badge-grade-A" id="activePeriodBadge">รอบประเมินประจำปี 2026</span>
+        <span class="badge badge-grade-B" id="activePeriodBadge">รอบประเมินประจำปี 2026</span>
       </div>
 
       <div class="header-actions">
-        <button class="btn btn-secondary" onclick="triggerRecalculate()" id="btnRecalc">
+        <button class="btn btn-secondary" onclick="triggerRecalculate()" id="btnRecalc" title="ประมวลผลคะแนนใหม่ทั้งหมด">
           <i class="fa-solid fa-rotate"></i> คำนวณคะแนนใหม่
         </button>
-        <div style="display: flex; align-items: center; gap: 4px;">
-          <button class="btn btn-success" onclick="triggerSyncNow()" id="btnSync" title="ซิงค์ข้อมูล 2 ทางระหว่างเซิร์ฟเวอร์บริษัท (10.5.3.242) กับ Supabase Cloud">
-            <i class="fa-solid fa-cloud-arrow-up"></i> Sync ตอนนี้
+
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <button class="btn btn-success" onclick="triggerSyncNow()" id="btnSync"
+            title="ซิงค์ข้อมูล 2 ทางระหว่างเซิร์ฟเวอร์บริษัท (10.5.3.242) กับ Supabase Cloud">
+            <i class="fa-solid fa-arrows-rotate"></i> Sync ข้อมูล
           </button>
-          <button class="btn btn-secondary" onclick="openCloudSyncModal()" id="btnCloudConfig" title="ตั้งค่าเชื่อมต่อ Supabase + Render (4G/5G)" style="padding: 8px 11px;">
-            <i class="fa-solid fa-cloud-bolt" style="color: #4F46E5;"></i> ตั้งค่า Cloud
-          </button>
-        </div>
-        <div class="dropdown-wrapper">
-          <button class="btn btn-primary" onclick="exportExcel()">
-            <i class="fa-solid fa-file-excel"></i> ส่งออก Excel
+          <button class="btn btn-secondary" onclick="openCloudSyncModal()" id="btnCloudConfig"
+            title="ตั้งค่าเชื่อมต่อฐานข้อมูล Cloud">
+            <i class="fa-solid fa-server" style="color: #475569;"></i> ตั้งค่า Cloud
           </button>
         </div>
-        <div id="desktopUserHeader" style="display: flex; align-items: center; margin-left: 6px;"></div>
+
+        <button class="btn btn-primary" onclick="exportExcel()">
+          <i class="fa-solid fa-file-excel"></i> ส่งออก Excel
+        </button>
+
+        <div class="header-divider"></div>
+        <div id="desktopUserHeader" style="display: flex; align-items: center;"></div>
       </div>
     </header>
 
     <!-- Content Body -->
     <div class="content-body">
-      
+
       <!-- View 1: Dashboard Tab -->
       <section id="viewDashboard">
-        
-        <!-- Stats Grid -->
+
+        <!-- Stats Grid (5 Balanced Enterprise Cards) -->
         <div class="stats-grid">
-          <div class="stat-card">
+          <div class="stat-card accent-blue">
             <div class="stat-info">
               <div class="stat-label">พนักงานทั้งหมดในระบบ</div>
               <div class="stat-value" id="statTotalEmp">0</div>
+              <div class="stat-sub">รายชื่อที่ประเมินในรอบนี้</div>
             </div>
             <div class="stat-icon blue">
               <i class="fa-solid fa-users"></i>
             </div>
           </div>
 
-          <div class="stat-card">
+          <div class="stat-card accent-indigo">
             <div class="stat-info">
               <div class="stat-label">คะแนนเฉลี่ยทั้งบริษัท</div>
               <div class="stat-value" id="statAvgScore">0.0</div>
+              <div class="stat-sub">จากคะแนนตั้งต้น 100.0</div>
             </div>
             <div class="stat-icon purple">
-              <i class="fa-solid fa-gauge-high"></i>
+              <i class="fa-solid fa-chart-line"></i>
             </div>
           </div>
 
-          <div class="stat-card">
+          <div class="stat-card accent-green">
             <div class="stat-info">
-              <div class="stat-label">เกรด A (ดีเยี่ยม >=90)</div>
-              <div class="stat-value" id="statGradeA" style="color: #10B981;">0</div>
+              <div class="stat-label">ระดับเกรด A (ดีเยี่ยม)</div>
+              <div class="stat-value" id="statGradeA" style="color: #059669;">0</div>
+              <div class="stat-sub">คะแนนสุทธิ &ge; 90.0</div>
             </div>
             <div class="stat-icon green">
               <i class="fa-solid fa-circle-check"></i>
             </div>
           </div>
 
-          <div class="stat-card">
+          <div class="stat-card accent-sky">
             <div class="stat-info">
-              <div class="stat-label">เกรด B (ดี 80-89)</div>
-              <div class="stat-value" id="statGradeB" style="color: #3B82F6;">0</div>
+              <div class="stat-label">ระดับเกรด B (ดี)</div>
+              <div class="stat-value" id="statGradeB" style="color: #2563EB;">0</div>
+              <div class="stat-sub">คะแนนสุทธิ 80.0 – 89.9</div>
             </div>
             <div class="stat-icon blue">
-              <i class="fa-solid fa-medal"></i>
+              <i class="fa-solid fa-user-check"></i>
             </div>
           </div>
 
-          <div class="stat-card">
+          <div class="stat-card accent-red">
             <div class="stat-info">
-              <div class="stat-label">ต้องปรับปรุง (เกรด D <70)</div>
-              <div class="stat-value" id="statGradeD" style="color: #EF4444;">0</div>
+              <div class="stat-label">ต้องปรับปรุง (เกรด D)</div>
+              <div class="stat-value" id="statGradeD" style="color: #DC2626;">0</div>
+              <div class="stat-sub">คะแนนสุทธิ &lt; 70.0</div>
             </div>
             <div class="stat-icon red">
               <i class="fa-solid fa-triangle-exclamation"></i>
@@ -152,56 +169,61 @@
           </div>
         </div>
 
-        <!-- Filter Bar -->
-        <div class="filter-bar" style="margin-top: 24px;">
-          <div class="search-input">
-            <i class="fa-solid fa-magnifying-glass"></i>
-            <input type="text" id="searchInput" placeholder="ค้นหาด้วยรหัสพนักงาน, ชื่อ-นามสกุล, หรือตำแหน่ง..." oninput="handleSearch()">
-          </div>
-
-          <div class="select-group">
-            <select class="custom-select" id="deptSelect" onchange="loadSummaryData()">
-              <option value="ALL">ทุกแผนก / ทุกทีม</option>
-            </select>
-
-            <select class="custom-select" id="gradeSelect" onchange="loadSummaryData()">
-              <option value="ALL">ทุกระดับเกรด (All)</option>
-              <option value="A">เกรด A (ดีเยี่ยม)</option>
-              <option value="B">เกรด B (ดี)</option>
-              <option value="C">เกรด C (ปานกลาง)</option>
-              <option value="D">เกรด D (ปรับปรุง)</option>
-            </select>
-
-            <button class="btn btn-secondary" onclick="openGradeModal()" style="padding: 7px 12px; font-size: 13px;" title="ดูและกำหนดช่วงคะแนนของแต่ละเกรด">
-              <i class="fa-solid fa-award" style="color: #F59E0B;"></i> เกณฑ์ตัดเกรด
-            </button>
-          </div>
-        </div>
-
-        <!-- Leaderboard Table -->
-        <div class="table-card" style="margin-top: 24px;">
+        <!-- Leaderboard & Filter Unified Section -->
+        <div class="table-card" style="margin-top: 16px;">
           <div class="table-header">
-            <div class="table-title">ตารางจัดอันดับและคะแนนสะสมรายบุคคล (Score Leaderboard)</div>
-            <button class="btn btn-secondary" onclick="exportTransactionsExcel()">
-              <i class="fa-solid fa-clock-rotate-left"></i> โหลด Transaction Log
-            </button>
+            <div>
+              <div class="table-title">ตารางสรุปผลคะแนนสะสมรายบุคคล (Employee Score Leaderboard)</div>
+              <div class="table-subtitle">แสดงข้อมูลคะแนนตั้งต้น รายการปรับลด/เพิ่ม และเกรดผลงานประจำรอบ</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <button class="btn btn-secondary" onclick="openGradeModal()" title="ดูและกำหนดช่วงคะแนนของแต่ละเกรด">
+                <i class="fa-solid fa-sliders" style="color: #475569;"></i> เกณฑ์ตัดเกรด
+              </button>
+              <button class="btn btn-secondary" onclick="exportTransactionsExcel()">
+                <i class="fa-solid fa-file-csv" style="color: #475569;"></i> ดาวน์โหลดประวัติรวม (Log)
+              </button>
+            </div>
+          </div>
+
+          <!-- Integrated Filter Bar -->
+          <div style="padding: 10px 18px; background: #F8FAFC; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+            <div class="search-input" style="max-width: 420px;">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="text" id="searchInput" placeholder="ค้นหารหัสพนักงาน, ชื่อ-นามสกุล, หรือตำแหน่งงาน..."
+                oninput="handleSearch()" style="background: #FFFFFF;">
+            </div>
+
+            <div class="select-group">
+              <select class="custom-select" id="deptSelect" onchange="loadSummaryData()">
+                <option value="ALL">ทุกแผนก / ทุกทีม</option>
+              </select>
+
+              <select class="custom-select" id="gradeSelect" onchange="loadSummaryData()">
+                <option value="ALL">ทุกระดับเกรด (All)</option>
+                <option value="A">เกรด A (ดีเยี่ยม)</option>
+                <option value="B">เกรด B (ดี)</option>
+                <option value="C">เกรด C (ปานกลาง)</option>
+                <option value="D">เกรด D (ต้องปรับปรุง)</option>
+              </select>
+            </div>
           </div>
 
           <div style="overflow-x: auto;">
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>อันดับ</th>
-                  <th>รหัสพนักงาน</th>
+                  <th class="text-center" style="width: 60px;">อันดับ</th>
+                  <th style="width: 110px;">รหัสพนักงาน</th>
                   <th>ชื่อ - นามสกุล</th>
                   <th>แผนก / ทีม</th>
                   <th>ตำแหน่งงาน</th>
-                  <th>คะแนนตั้งต้น</th>
-                  <th>หักคะแนนรวม</th>
-                  <th>บวกคะแนนรวม</th>
-                  <th>คะแนนสุทธิ</th>
-                  <th>เกรดผลงาน</th>
-                  <th>จัดการ</th>
+                  <th class="text-right">คะแนนตั้งต้น</th>
+                  <th class="text-right">หักคะแนน</th>
+                  <th class="text-right">บวกคะแนน</th>
+                  <th class="text-right">คะแนนสุทธิ</th>
+                  <th class="text-center">เกรดผลงาน</th>
+                  <th class="text-right" style="width: 175px;">การจัดการ</th>
                 </tr>
               </thead>
               <tbody id="leaderboardBody">
@@ -219,13 +241,13 @@
           <div class="table-header">
             <div>
               <div class="table-title">เกณฑ์การคิดคะแนนตามแผนกและตำแหน่งงาน (Department & Position Policies)</div>
-              <div style="font-size: 13px; color: #64748B; margin-top: 4px;">
-                * สามารถกำหนดเกณฑ์ วันหยุด และคะแนนลงลึกได้ทั้งระดับแผนก และเจาะจงเฉพาะตำแหน่งงาน
+              <div class="table-subtitle">
+                กำหนดเกณฑ์การหักคะแนน วันหยุดประจำสัปดาห์ และแต้มพิเศษแยกตามแผนกหรือตำแหน่งงาน
               </div>
             </div>
-            <div style="display: flex; gap: 10px;">
-              <button class="btn btn-secondary" onclick="openGradeModal()" style="font-weight: 600;">
-                <i class="fa-solid fa-award" style="color: #F59E0B;"></i> กำหนดเกณฑ์ตัดเกรด (A/B/C/D)
+            <div style="display: flex; gap: 8px;">
+              <button class="btn btn-secondary" onclick="openGradeModal()">
+                <i class="fa-solid fa-sliders"></i> กำหนดเกณฑ์ตัดเกรด (A/B/C/D)
               </button>
               <button class="btn btn-primary" onclick="openPolicyModal()">
                 <i class="fa-solid fa-plus"></i> เพิ่มเกณฑ์เฉพาะแผนก/ตำแหน่ง
@@ -239,12 +261,12 @@
                   <th>แผนก / ทีม</th>
                   <th>ตำแหน่งงาน</th>
                   <th>รูปแบบคิดสาย</th>
-                  <th>หักขาดงาน</th>
-                  <th>ลาป่วย</th>
+                  <th class="text-right">หักขาดงาน</th>
+                  <th class="text-right">ลาป่วย</th>
                   <th>บวกวันหยุดสัปดาห์</th>
-                  <th>บวกวันหยุดนักขัตฤกษ์</th>
+                  <th class="text-right">บวกวันหยุดนักขัตฤกษ์</th>
                   <th>ขั้นบันไดสาย</th>
-                  <th>จัดการ</th>
+                  <th class="text-right">จัดการ</th>
                 </tr>
               </thead>
               <tbody id="policiesTableBody">
@@ -259,7 +281,10 @@
       <section id="viewPeriods" style="display: none;">
         <div class="table-card">
           <div class="table-header">
-            <div class="table-title">รอบการประเมินผลคะแนน (Dynamic Periods)</div>
+            <div>
+              <div class="table-title">รอบการประเมินผลคะแนน (Scoring Periods)</div>
+              <div class="table-subtitle">จัดการช่วงเวลาและคะแนนตั้งต้นสำหรับแต่ละรอบการประเมิน</div>
+            </div>
             <button class="btn btn-primary" onclick="openPeriodModal()">
               <i class="fa-solid fa-calendar-plus"></i> สร้างรอบประเมินใหม่
             </button>
@@ -268,13 +293,13 @@
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>รหัสรอบ</th>
+                  <th style="width: 90px;">รหัสรอบ</th>
                   <th>ชื่อรอบประเมิน</th>
                   <th>วันเริ่มต้น (Start Date)</th>
                   <th>วันสิ้นสุด (End Date)</th>
-                  <th>คะแนนตั้งต้น</th>
-                  <th>สถานะ</th>
-                  <th>จัดการ</th>
+                  <th class="text-right">คะแนนตั้งต้น</th>
+                  <th class="text-center">สถานะ</th>
+                  <th class="text-right">จัดการ</th>
                 </tr>
               </thead>
               <tbody id="periodsTableBody">
@@ -289,28 +314,32 @@
       <section id="viewPresets" style="display: none;">
         <div class="table-card">
           <div class="table-header">
-            <div class="table-title">ตารางตัวเลือกเหตุผลมาตรฐาน (Preset Dropdown Table)</div>
-            <div style="display: flex; gap: 10px;">
+            <div>
+              <div class="table-title">ตารางตัวเลือกเหตุผลมาตรฐาน (Preset Reason Master)</div>
+              <div class="table-subtitle">รายการเหตุผลมาตรฐานสำหรับการบวกและตัดคะแนนแบบ Manual</div>
+            </div>
+            <div style="display: flex; gap: 8px;">
               <button class="btn btn-secondary" onclick="exportPresetsExcel()">
                 <i class="fa-solid fa-file-arrow-down"></i> ส่งออก Excel (Export)
               </button>
               <button class="btn btn-primary" onclick="triggerImportPresets()">
                 <i class="fa-solid fa-file-arrow-up"></i> นำเข้า Excel (Import)
               </button>
-              <input type="file" id="presetFileInput" accept=".xlsx, .xls" style="display: none;" onchange="handlePresetFileImport(event)">
+              <input type="file" id="presetFileInput" accept=".xlsx, .xls" style="display: none;"
+                onchange="handlePresetFileImport(event)">
             </div>
           </div>
           <div style="overflow-x: auto;">
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>ประเภท</th>
-                  <th>รหัสเหตุผล</th>
+                  <th style="width: 120px;">ประเภท</th>
+                  <th style="width: 140px;">รหัสเหตุผล</th>
                   <th>ชื่อเหตุผล</th>
-                  <th>คะแนนมาตรฐาน</th>
+                  <th class="text-right">คะแนนมาตรฐาน</th>
                   <th>แผนกที่ใช้ได้</th>
-                  <th>สถานะ</th>
-                  <th>จัดการ</th>
+                  <th class="text-center">สถานะ</th>
+                  <th class="text-right">จัดการ</th>
                 </tr>
               </thead>
               <tbody id="presetsTableBody">
@@ -327,14 +356,16 @@
           <div class="table-header">
             <div>
               <div class="table-title">ปฏิทินวันหยุดนักขัตฤกษ์ประจำปี (Public Holidays Calendar)</div>
-              <div style="font-size: 13px; color: #64748B; margin-top: 4px;">
-                💡 เมื่อพนักงานมาสแกนนิ้วทำงานในวันหยุดนักขัตฤกษ์ ระบบจะบวกแต้มพิเศษให้อัตโนมัติเท่ากันทั้งบริษัท (<span id="holidayBonusSubtitleRate" style="color: #10B981; font-weight: 700;">+3.00 แต้ม/วัน</span>)
+              <div class="table-subtitle">
+                เมื่อพนักงานสแกนนิ้วมาปฏิบัติงานในวันหยุดนักขัตฤกษ์ ระบบจะบวกคะแนนพิเศษให้อัตโนมัติ (<span
+                  id="holidayBonusSubtitleRate" style="color: #059669; font-weight: 700;">+3.00 แต้ม/วัน</span>)
               </div>
             </div>
-            <div style="display: flex; gap: 10px; align-items: center;">
+            <div style="display: flex; gap: 8px; align-items: center;">
               <div style="display: flex; align-items: center; gap: 6px;">
-                <label style="font-size: 13px; font-weight: 600; color: #475569;">เลือกปี:</label>
-                <select class="custom-select" id="holidayYearSelect" onchange="loadHolidays()" style="font-weight: 700; color: #4F46E5; padding: 6px 12px;">
+                <label style="font-size: 12.5px; font-weight: 600; color: #475569;">ปีปฏิทิน:</label>
+                <select class="custom-select" id="holidayYearSelect" onchange="loadHolidays()"
+                  style="font-weight: 600; color: #0F172A;">
                   <option value="2026" selected>ปี 2026</option>
                   <option value="2027">ปี 2027</option>
                   <option value="2025">ปี 2025</option>
@@ -350,12 +381,12 @@
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>ปี (Year)</th>
-                  <th>วันที่ (Date)</th>
+                  <th style="width: 100px;">ปี (Year)</th>
+                  <th style="width: 180px;">วันที่ (Date)</th>
                   <th>ชื่อวันหยุดนักขัตฤกษ์</th>
                   <th>แต้มบวกเมื่อมาทำงาน</th>
                   <th>รายละเอียดเพิ่มเติม</th>
-                  <th>จัดการ</th>
+                  <th class="text-right">จัดการ</th>
                 </tr>
               </thead>
               <tbody id="holidaysTableBody">
@@ -368,47 +399,52 @@
 
       <!-- View 6: จุดจ่ายงานยาก & คุณสมบัติพิเศษ (Difficult Station Bonus) -->
       <section id="viewStations" style="display: none;">
-        
+
         <!-- Top Info Header Card -->
-        <div class="card" style="margin-bottom: 24px; background: linear-gradient(135deg, #4338CA, #6366F1); color: #fff; padding: 22px 26px; border-radius: 14px; box-shadow: 0 4px 14px rgba(79, 70, 229, 0.2);">
-          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
-            <div>
-              <h2 style="font-size: 20px; font-weight: 700; margin-bottom: 6px; display: flex; align-items: center; gap: 10px;">
-                <i class="fa-solid fa-award" style="color: #FDE047;"></i> คะแนนบวกอัตโนมัติ: ประจำจุดจ่ายงานยาก & สกิลพิเศษ
-              </h2>
-              <p style="font-size: 13.5px; opacity: 0.9; margin: 0; line-height: 1.5;">
-                เพิ่มคะแนนบวกอัตโนมัติให้แก่พนักงานที่มีคุณสมบัติพิเศษประจำจุดจ่ายงานยาก (เช่น E Picking, SR, Piece Picking) ตามรอบการประเมิน หรือความถี่ที่กำหนด
-              </p>
-            </div>
-            <div style="display: flex; gap: 10px;">
-              <button class="btn" onclick="openAddStationModal()" style="background: #fff; color: #4338CA; font-weight: 700; border: none; box-shadow: 0 2px 6px rgba(0,0,0,0.1);">
-                <i class="fa-solid fa-gear"></i> ตั้งค่าเกณฑ์จุดงานยาก
-              </button>
-              <button class="btn" onclick="openAssignStationModal()" style="background: #10B981; color: #fff; font-weight: 700; border: none; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">
-                <i class="fa-solid fa-user-plus"></i> + กำหนดพนักงานประจำจุด
-              </button>
-            </div>
+        <div class="section-banner">
+          <div>
+            <h2 style="font-size: 16px; font-weight: 700; color: #0F172A; margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
+              <i class="fa-solid fa-briefcase" style="color: #2563EB;"></i>
+              เกณฑ์คะแนนพิเศษ: ประจำจุดจ่ายงานยากและทักษะเฉพาะทาง
+            </h2>
+            <p style="font-size: 12.5px; color: #64748B; margin: 0;">
+              กำหนดคะแนนบวกอัตโนมัติให้แก่พนักงานที่ปฏิบัติงานในจุดที่มีความซับซ้อนสูง (เช่น E Picking, SR, Piece Picking) ตามรอบเดือนหรือรอบประเมิน
+            </p>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-secondary" onclick="openAddStationModal()">
+              <i class="fa-solid fa-gear"></i> ตั้งค่าเกณฑ์จุดงานยาก
+            </button>
+            <button class="btn btn-primary" onclick="openAssignStationModal()">
+              <i class="fa-solid fa-user-plus"></i> กำหนดพนักงานประจำจุด
+            </button>
           </div>
         </div>
 
         <!-- Section A: Station Point Configs Overview Cards -->
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 24px;" id="stationCardsContainer">
+        <div
+          style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-bottom: 16px;"
+          id="stationCardsContainer">
           <!-- Dynamically populated station cards -->
         </div>
 
         <!-- Section B: Assigned Employees Table -->
         <div class="card">
-          <div class="card-header" style="flex-wrap: wrap; gap: 12px;">
+          <div class="card-header">
             <div>
-              <h3 class="card-title"><i class="fa-solid fa-users-gear" style="color: #4F46E5;"></i> รายชื่อพนักงานที่ได้รับคะแนนบวกประจำจุดงานยาก</h3>
-              <p style="font-size: 12px; color: #64748B; margin-top: 4px;">พนักงานในตารางนี้จะได้รับคะแนนบวกอัตโนมัติในการประมวลผลคะแนนของรอบนี้</p>
+              <h3 class="card-title">รายชื่อพนักงานที่ได้รับคะแนนบวกประจำจุดงานยาก</h3>
+              <p class="table-subtitle">พนักงานในตารางนี้จะได้รับการคำนวณคะแนนพิเศษอัตโนมัติในรอบปัจจุบัน</p>
             </div>
-            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
               <div style="position: relative;">
-                <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #94A3B8; font-size: 13px;"></i>
-                <input type="text" id="stationAssignSearchInput" class="form-control" placeholder="🔍 ค้นหารหัส, ชื่อ, แผนก..." oninput="filterStationAssignments()" style="padding-left: 36px; font-size: 13px; width: 220px;">
+                <i class="fa-solid fa-magnifying-glass"
+                  style="position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: #94A3B8; font-size: 12.5px;"></i>
+                <input type="text" id="stationAssignSearchInput" class="form-control"
+                  placeholder="ค้นหารหัส, ชื่อ, แผนก..." oninput="filterStationAssignments()"
+                  style="padding-left: 32px; font-size: 12.5px; width: 210px;">
               </div>
-              <select class="form-control" id="stationFilterSelect" onchange="filterStationAssignments()" style="font-size: 13px; font-weight: 600; width: 180px;">
+              <select class="custom-select" id="stationFilterSelect" onchange="filterStationAssignments()"
+                style="font-size: 12.5px; width: 180px;">
                 <option value="ALL">ทุกจุดงานยาก</option>
               </select>
               <button class="btn btn-primary" onclick="openAssignStationModal()">
@@ -425,11 +461,11 @@
                   <th>แผนก / ตำแหน่ง</th>
                   <th>จุดงานยากที่ประจำ</th>
                   <th>รอบเดือนที่คิดคะแนน</th>
-                  <th>แต้มบวกต่อเดือน</th>
-                  <th>แต้มสะสมในรอบนี้</th>
-                  <th>ผู้บันทึกกำหนด</th>
+                  <th class="text-right">แต้มบวกต่อเดือน</th>
+                  <th class="text-right">แต้มสะสมในรอบนี้</th>
+                  <th>ผู้บันทึก</th>
                   <th>หมายเหตุ</th>
-                  <th style="text-align: center;">จัดการ</th>
+                  <th class="text-right">จัดการ</th>
                 </tr>
               </thead>
               <tbody id="stationAssignmentsTableBody">
@@ -443,41 +479,46 @@
 
       <!-- View: Employee Transactions & Scorecard Ledger -->
       <section id="viewTransactions" style="display: none;">
-        
+
         <!-- Search & Employee Selector Bar -->
-        <div class="table-card" style="margin-bottom: 20px;">
+        <div class="table-card" style="margin-bottom: 16px; padding: 16px 20px;">
           <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; justify-content: space-between;">
-            <div style="flex: 1; min-width: 280px;">
-              <label class="form-label" style="font-weight: 700; color: #1E293B; margin-bottom: 6px;">
-                <i class="fa-solid fa-user-magnifying-glass" style="color: #4F46E5;"></i> ค้นหารหัสพนักงาน หรือชื่อ-นามสกุล
+            <div style="flex: 1; min-width: 260px;">
+              <label class="form-label">
+                ค้นหาด้วยรหัสพนักงาน หรือชื่อ-นามสกุล
               </label>
-              <div style="display: flex; gap: 10px;">
-                <input type="text" id="txEmpSearchInput" class="form-control" placeholder="พิมพ์รหัสพนักงาน หรือชื่อ เช่น 102985..." onkeydown="if(event.key==='Enter') searchTxEmployee()">
-                <button type="button" class="btn btn-primary" onclick="searchTxEmployee()" style="white-space: nowrap;">
+              <div style="display: flex; gap: 8px;">
+                <input type="text" id="txEmpSearchInput" class="form-control"
+                  placeholder="ระบุรหัสพนักงาน หรือชื่อ-นามสกุล..."
+                  onkeydown="if(event.key==='Enter') searchTxEmployee()">
+                <button type="button" class="btn btn-primary" onclick="searchTxEmployee()">
                   <i class="fa-solid fa-magnifying-glass"></i> ค้นหา
                 </button>
               </div>
             </div>
 
-            <div style="flex: 1; min-width: 280px;">
-              <label class="form-label" style="font-weight: 700; color: #1E293B; margin-bottom: 6px;">
-                <i class="fa-solid fa-list-ul" style="color: #0284C7;"></i> หรือเลือกจาก Dropdown รายชื่อทั้งหมด
+            <div style="flex: 1; min-width: 260px;">
+              <label class="form-label">
+                หรือเลือกจากรายชื่อพนักงานทั้งหมดในระบบ
               </label>
-              <select class="custom-select" id="txEmpDropdownSelect" onchange="onTxDropdownSelect(this.value)" style="width: 100%; font-weight: 600;">
-                <option value="">-- กรุณาเลือกพนักงาน --</option>
+              <select class="custom-select" id="txEmpDropdownSelect" onchange="onTxDropdownSelect(this.value)"
+                style="width: 100%;">
+                <option value="">-- เลือกพนักงานที่ต้องการตรวจสอบ --</option>
               </select>
             </div>
           </div>
         </div>
 
         <!-- Initial Placeholder State (Before selecting employee) -->
-        <div id="txEmptyState" style="text-align: center; padding: 60px 20px; background: #FFFFFF; border-radius: 16px; border: 1.5px dashed #CBD5E1; margin-top: 10px;">
-          <div style="width: 70px; height: 70px; border-radius: 50%; background: #EEF2FF; color: #4F46E5; display: flex; align-items: center; justify-content: center; font-size: 28px; margin: 0 auto 16px;">
-            <i class="fa-solid fa-receipt"></i>
+        <div id="txEmptyState"
+          style="text-align: center; padding: 52px 20px; background: #FFFFFF; border-radius: 8px; border: 1px solid #E2E8F0;">
+          <div
+            style="width: 52px; height: 52px; border-radius: 8px; background: #F1F5F9; color: #475569; display: flex; align-items: center; justify-content: center; font-size: 20px; margin: 0 auto 14px;">
+            <i class="fa-solid fa-file-lines"></i>
           </div>
-          <h3 style="font-size: 18px; font-weight: 700; color: #1E293B; margin-bottom: 6px;">ยังไม่ได้เลือกรหัสพนักงาน</h3>
-          <p style="color: #64748B; font-size: 14px; max-width: 500px; margin: 0 auto 20px;">
-            กรุณาพิมพ์รหัสพนักงานด้านบน หรือคลิกปุ่ม <b>"ดูประวัติ"</b> จากตารางแดชบอร์ด เพื่อตรวจสอบว่าพนักงานถูกหักคะแนนไปวันไหน ด้วยเหตุผลใด
+          <h3 style="font-size: 15px; font-weight: 700; color: #0F172A; margin-bottom: 4px;">กรุณาเลือกรายชื่อพนักงาน</h3>
+          <p style="color: #64748B; font-size: 13px; max-width: 460px; margin: 0 auto 16px;">
+            ค้นหารหัสพนักงานจากช่องด้านบน หรือคลิกปุ่ม "ดูประวัติ" จากตารางหน้าแดชบอร์ด เพื่อดูรายละเอียดการบวกและตัดคะแนนรายวัน
           </p>
           <button class="btn btn-secondary" onclick="switchTab('dashboard')">
             <i class="fa-solid fa-arrow-left"></i> กลับไปหน้าแดชบอร์ด
@@ -486,54 +527,57 @@
 
         <!-- Employee Detail Content (Shown when an employee is selected) -->
         <div id="txDetailContainer" style="display: none;">
-          
+
           <!-- Employee Profile & Score Summary Banner -->
-          <div class="table-card" style="background: linear-gradient(135deg, #1E1B4B 0%, #312E81 50%, #4338CA 100%); color: #FFFFFF; margin-bottom: 20px; border: none; box-shadow: 0 10px 25px -5px rgba(67, 56, 202, 0.3);">
-            <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 20px;">
-              
+          <div class="emp-scorecard-banner">
+            <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px;">
+
               <!-- Left: Avatar & Emp Info -->
-              <div style="display: flex; align-items: center; gap: 16px;">
-                <div style="width: 64px; height: 64px; border-radius: 50%; background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.4); display: flex; align-items: center; justify-content: center; font-size: 28px;">
+              <div style="display: flex; align-items: center; gap: 14px;">
+                <div
+                  style="width: 48px; height: 48px; border-radius: 8px; background: #1E293B; border: 1px solid #334155; display: flex; align-items: center; justify-content: center; font-size: 20px; color: #94A3B8;">
                   <i class="fa-solid fa-user-tie"></i>
                 </div>
                 <div>
-                  <div style="display: flex; align-items: center; gap: 10px;">
-                    <h2 style="font-size: 22px; font-weight: 800; margin: 0;" id="txEmpName">-</h2>
-                    <span class="badge" id="txEmpCodeBadge" style="background: rgba(255,255,255,0.25); color: #FFFFFF; font-size: 13px; font-weight: 700;">-</span>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <h2 style="font-size: 18px; font-weight: 700; margin: 0; color: #F8FAFC;" id="txEmpName">-</h2>
+                    <span class="badge" id="txEmpCodeBadge"
+                      style="background: #1E293B; color: #93C5FD; border: 1px solid #334155; font-family: 'Inter', monospace;">-</span>
                   </div>
-                  <div style="margin-top: 6px; font-size: 13px; opacity: 0.9; display: flex; gap: 14px; flex-wrap: wrap;">
-                    <span><i class="fa-solid fa-building"></i> แผนก/ทีม: <b id="txEmpDept">-</b></span>
-                    <span><i class="fa-solid fa-id-badge"></i> ตำแหน่ง: <b id="txEmpPos">-</b></span>
-                    <span><i class="fa-solid fa-calendar"></i> รอบประเมิน: <b id="txPeriodName">-</b></span>
+                  <div style="margin-top: 4px; font-size: 12.5px; color: #94A3B8; display: flex; gap: 14px; flex-wrap: wrap;">
+                    <span>แผนก/ทีม: <strong style="color: #E2E8F0;" id="txEmpDept">-</strong></span>
+                    <span>ตำแหน่ง: <strong style="color: #E2E8F0;" id="txEmpPos">-</strong></span>
+                    <span>รอบประเมิน: <strong style="color: #E2E8F0;" id="txPeriodName">-</strong></span>
                   </div>
                 </div>
               </div>
 
-              <!-- Center/Right: Scores Grid & Grade -->
-              <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
-                
-                <div style="background: rgba(255,255,255,0.12); backdrop-filter: blur(8px); border-radius: 12px; padding: 10px 16px; text-align: center; border: 1px solid rgba(255,255,255,0.15);">
-                  <div style="font-size: 11px; opacity: 0.8; text-transform: uppercase;">คะแนนตั้งต้น</div>
-                  <div style="font-size: 18px; font-weight: 700;" id="txInitScore">100.0</div>
+              <!-- Right: Scores Grid & Grade -->
+              <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+
+                <div class="score-metric-box">
+                  <div style="font-size: 11px; color: #94A3B8;">คะแนนตั้งต้น</div>
+                  <div style="font-size: 16px; font-weight: 700; color: #F8FAFC;" id="txInitScore">100.0</div>
                 </div>
 
-                <div style="background: rgba(239, 68, 68, 0.25); border-radius: 12px; padding: 10px 16px; text-align: center; border: 1px solid rgba(239, 68, 68, 0.4);">
-                  <div style="font-size: 11px; color: #FCA5A5; text-transform: uppercase;"><i class="fa-solid fa-arrow-trend-down"></i> หักคะแนนรวม</div>
-                  <div style="font-size: 18px; font-weight: 800; color: #FCA5A5;" id="txTotalDeduct">-0.0</div>
+                <div class="score-metric-box">
+                  <div style="font-size: 11px; color: #FCA5A5;">หักคะแนนรวม</div>
+                  <div style="font-size: 16px; font-weight: 700; color: #F87171;" id="txTotalDeduct">-0.0</div>
                 </div>
 
-                <div style="background: rgba(16, 185, 129, 0.25); border-radius: 12px; padding: 10px 16px; text-align: center; border: 1px solid rgba(16, 185, 129, 0.4);">
-                  <div style="font-size: 11px; color: #6EE7B7; text-transform: uppercase;"><i class="fa-solid fa-arrow-trend-up"></i> บวกคะแนนรวม</div>
-                  <div style="font-size: 18px; font-weight: 800; color: #6EE7B7;" id="txTotalAdded">+0.0</div>
+                <div class="score-metric-box">
+                  <div style="font-size: 11px; color: #6EE7B7;">บวกคะแนนรวม</div>
+                  <div style="font-size: 16px; font-weight: 700; color: #34D399;" id="txTotalAdded">+0.0</div>
                 </div>
 
-                <div style="background: rgba(255, 255, 255, 0.2); border-radius: 12px; padding: 10px 20px; text-align: center; border: 1.5px solid rgba(255, 255, 255, 0.35);">
-                  <div style="font-size: 11px; opacity: 0.85; text-transform: uppercase; font-weight: 600;">คะแนนสุทธิ (Net Score)</div>
-                  <div style="font-size: 26px; font-weight: 900; color: #FFFFFF;" id="txNetScore">0.0</div>
+                <div class="score-metric-box" style="background: #0B1120; border-color: #3B82F6; min-width: 115px;">
+                  <div style="font-size: 11px; color: #93C5FD;">คะแนนสุทธิ (Net)</div>
+                  <div style="font-size: 20px; font-weight: 700; color: #FFFFFF;" id="txNetScore">0.0</div>
                 </div>
 
-                <div id="txGradeBadgeContainer">
-                  <span class="badge" id="txGradeBadge" style="font-size: 16px; padding: 10px 18px; border-radius: 12px; font-weight: 800; background: #FFFFFF; color: #4338CA;">เกรด A</span>
+                <div id="txGradeBadgeContainer" style="margin-left: 4px;">
+                  <span class="badge badge-grade-A" id="txGradeBadge"
+                    style="font-size: 14px; padding: 8px 14px; border-radius: 6px;">เกรด A</span>
                 </div>
 
               </div>
@@ -543,28 +587,39 @@
 
           <!-- Transaction List Card -->
           <div class="table-card">
-            <div class="table-header" style="flex-wrap: wrap; gap: 12px;">
+            <div class="table-header">
               <div>
                 <div class="table-title">
-                  <i class="fa-solid fa-timeline" style="color: #4F46E5;"></i> ประวัติรายการตัด/บวกคะแนนรายวัน (Transaction History)
+                  ประวัติรายการตัดและบวกคะแนนรายวัน (Transaction Ledger)
                 </div>
-                <div style="font-size: 13px; color: #64748B; margin-top: 2px;">
-                  พบประวัติทั้งหมด <b id="txCountBadge" style="color: #4F46E5;">0</b> รายการ
+                <div class="table-subtitle">
+                  พบประวัติทั้งหมด <strong id="txCountBadge" style="color: #0F172A;">0</strong> รายการ
                 </div>
               </div>
 
               <!-- Filter Buttons by Source / Type -->
               <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-                <div style="display: inline-flex; background: #F1F5F9; padding: 3px; border-radius: 8px; border: 1px solid #E2E8F0;">
-                  <button type="button" class="btn btn-sm btn-filter-tx" id="btnFilterTxAll" onclick="filterTransactions('ALL')" style="padding: 4px 12px; font-size: 12px; background: #FFFFFF; color: #4F46E5; font-weight: 700; border-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); border: none; cursor: pointer;">ทั้งหมด</button>
-                  <button type="button" class="btn btn-sm btn-filter-tx" id="btnFilterTxDeduct" onclick="filterTransactions('DEDUCT')" style="padding: 4px 12px; font-size: 12px; background: transparent; color: #64748B; font-weight: 600; border: none; cursor: pointer;">เฉพาะหักแต้ม</button>
-                  <button type="button" class="btn btn-sm btn-filter-tx" id="btnFilterTxBonus" onclick="filterTransactions('BONUS')" style="padding: 4px 12px; font-size: 12px; background: transparent; color: #64748B; font-weight: 600; border: none; cursor: pointer;">เฉพาะบวกแต้ม</button>
-                  <button type="button" class="btn btn-sm btn-filter-tx" id="btnFilterTxAuto" onclick="filterTransactions('AUTO')" style="padding: 4px 12px; font-size: 12px; background: transparent; color: #64748B; font-weight: 600; border: none; cursor: pointer;">🤖 Auto ระบบ</button>
-                  <button type="button" class="btn btn-sm btn-filter-tx" id="btnFilterTxManual" onclick="filterTransactions('MANUAL')" style="padding: 4px 12px; font-size: 12px; background: transparent; color: #64748B; font-weight: 600; border: none; cursor: pointer;">👤 Manual หัวหน้า</button>
+                <div
+                  style="display: inline-flex; background: #F1F5F9; padding: 3px; border-radius: 6px; border: 1px solid #E2E8F0;">
+                  <button type="button" class="btn btn-sm btn-filter-tx" id="btnFilterTxAll"
+                    onclick="filterTransactions('ALL')"
+                    style="padding: 4px 10px; font-size: 12px; background: #FFFFFF; color: #0F172A; font-weight: 600; border-radius: 4px; border: none; cursor: pointer;">ทั้งหมด</button>
+                  <button type="button" class="btn btn-sm btn-filter-tx" id="btnFilterTxDeduct"
+                    onclick="filterTransactions('DEDUCT')"
+                    style="padding: 4px 10px; font-size: 12px; background: transparent; color: #64748B; font-weight: 500; border: none; cursor: pointer;">เฉพาะหักแต้ม</button>
+                  <button type="button" class="btn btn-sm btn-filter-tx" id="btnFilterTxBonus"
+                    onclick="filterTransactions('BONUS')"
+                    style="padding: 4px 10px; font-size: 12px; background: transparent; color: #64748B; font-weight: 500; border: none; cursor: pointer;">เฉพาะบวกแต้ม</button>
+                  <button type="button" class="btn btn-sm btn-filter-tx" id="btnFilterTxAuto"
+                    onclick="filterTransactions('AUTO')"
+                    style="padding: 4px 10px; font-size: 12px; background: transparent; color: #64748B; font-weight: 500; border: none; cursor: pointer;">ระบบอัตโนมัติ</button>
+                  <button type="button" class="btn btn-sm btn-filter-tx" id="btnFilterTxManual"
+                    onclick="filterTransactions('MANUAL')"
+                    style="padding: 4px 10px; font-size: 12px; background: transparent; color: #64748B; font-weight: 500; border: none; cursor: pointer;">หัวหน้างานบันทึก</button>
                 </div>
 
-                <button class="btn btn-secondary" onclick="openAdjustForEmpFromTx()" style="font-size: 12px; padding: 6px 12px;">
-                  <i class="fa-solid fa-plus-circle" style="color: #4F46E5;"></i> ปรับคะแนนคนนี้
+                <button class="btn btn-primary btn-sm" onclick="openAdjustForEmpFromTx()">
+                  <i class="fa-solid fa-plus"></i> ปรับคะแนนพนักงานนี้
                 </button>
               </div>
             </div>
@@ -574,13 +629,13 @@
               <table class="data-table">
                 <thead>
                   <tr>
-                    <th style="width: 50px;">ลำดับ</th>
-                    <th style="width: 140px;">วันที่เกิดเหตุ/ทำรายการ</th>
-                    <th style="width: 130px;">ประเภทที่มา</th>
+                    <th class="text-center" style="width: 55px;">ลำดับ</th>
+                    <th style="width: 140px;">วันที่ทำรายการ</th>
+                    <th style="width: 130px;">แหล่งที่มา</th>
                     <th>เหตุผลและรายละเอียดการปรับคะแนน</th>
-                    <th style="width: 130px; text-align: right;">คะแนนที่ปรับ</th>
+                    <th class="text-right" style="width: 130px;">คะแนนที่ปรับ</th>
                     <th style="width: 130px;">ผู้บันทึก</th>
-                    <th style="width: 90px; text-align: center;">หลักฐาน</th>
+                    <th class="text-center" style="width: 90px;">หลักฐาน</th>
                     <th style="width: 140px;">เวลาที่บันทึก</th>
                   </tr>
                 </thead>
@@ -608,16 +663,18 @@
       </div>
 
       <!-- Supervisor Identity Bar in Adjust Modal -->
-      <div id="modalSupervisorBar" style="margin-bottom: 14px; padding: 10px 14px; background: #F8FAFC; border: 1.5px solid #E2E8F0; border-radius: 10px; font-size: 13px; display: flex; justify-content: space-between; align-items: center;">
+      <div id="modalSupervisorBar"
+        style="margin-bottom: 14px; padding: 9px 12px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; font-size: 12.5px; display: flex; justify-content: space-between; align-items: center;">
         <div id="modalSupervisorInfo">
-          <i class="fa-solid fa-user-shield" style="color: #4F46E5; margin-right: 6px;"></i> ผู้บันทึก: <strong id="modalSupervisorName">กำลังตรวจสอบ...</strong>
+          <i class="fa-solid fa-user-shield" style="color: #2563EB; margin-right: 6px;"></i> ผู้บันทึก: <strong
+            id="modalSupervisorName">กำลังตรวจสอบ...</strong>
         </div>
-        <button type="button" onclick="openLoginModal()" style="background: #EEF2FF; border: 1px solid #C7D2FE; color: #4F46E5; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;">
+        <button type="button" onclick="openLoginModal()" class="btn btn-sm btn-secondary">
           <i class="fa-solid fa-arrow-right-arrow-left"></i> สลับบัญชี
         </button>
       </div>
 
-      <!-- Type Switch Tabs: 🟢 Positive (+) vs 🔴 Negative (-) -->
+      <!-- Type Switch Tabs -->
       <div class="type-switch">
         <button type="button" class="type-btn active add" id="tabAdd" onclick="selectPointType('ADD')">
           <i class="fa-solid fa-circle-plus"></i> ให้คะแนนบวก (Bonus)
@@ -630,61 +687,75 @@
       <form id="adjustForm" onsubmit="submitAdjustment(event)">
         <input type="hidden" id="adjustPointType" value="ADD">
 
-        <div class="form-group" style="margin-bottom: 16px;">
-          <label class="form-label" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <span><i class="fa-solid fa-user-tag" style="color: #4F46E5;"></i> 1. เลือกรหัส หรือ ชื่อพนักงาน *</span>
+        <div class="form-group">
+          <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
+            <span>1. เลือกรหัส หรือ ชื่อพนักงาน *</span>
             <span id="empCountBadge" style="font-size: 11px; color: #64748B; font-weight: normal;">(กำลังโหลด...)</span>
           </label>
 
           <!-- Search Input for ID or Name -->
           <div style="position: relative; margin-bottom: 8px;">
-            <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #94A3B8; font-size: 13px;"></i>
-            <input type="text" id="adjustEmpSearchInput" class="form-control" placeholder="🔍 ค้นหารหัสพนักงาน (เช่น WHC...), ชื่อ-นามสกุล, หรือแผนก..." oninput="filterAdjustEmployees()" style="padding-left: 36px; padding-right: 32px; font-size: 13px;">
-            <button type="button" id="btnClearEmpSearch" onclick="clearEmpSearch()" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #94A3B8; cursor: pointer; display: none;" title="ล้างคำค้นหา">
+            <i class="fa-solid fa-magnifying-glass"
+              style="position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: #94A3B8; font-size: 12.5px;"></i>
+            <input type="text" id="adjustEmpSearchInput" class="form-control"
+              placeholder="ค้นหารหัสพนักงาน, ชื่อ-นามสกุล, หรือแผนก..."
+              oninput="filterAdjustEmployees()" style="padding-left: 32px; padding-right: 30px;">
+            <button type="button" id="btnClearEmpSearch" onclick="clearEmpSearch()"
+              style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #94A3B8; cursor: pointer; display: none;"
+              title="ล้างคำค้นหา">
               <i class="fa-solid fa-xmark"></i>
             </button>
           </div>
 
           <!-- Select Dropdown -->
-          <select class="form-control" id="adjustEmpSelect" required onchange="onAdjustEmpSelected()" style="font-weight: 600;">
+          <select class="form-control" id="adjustEmpSelect" required onchange="onAdjustEmpSelected()"
+            style="font-weight: 600;">
             <option value="">-- เลือกรหัส/ชื่อพนักงาน --</option>
           </select>
 
           <!-- Selected Employee Confirmation Badge -->
-          <div id="selectedEmpBadge" style="margin-top: 8px; display: none; background: #EEF2FF; border: 1.5px solid #C7D2FE; border-radius: 8px; padding: 8px 12px; font-size: 13px; color: #3730A3;">
+          <div id="selectedEmpBadge"
+            style="margin-top: 8px; display: none; background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 6px; padding: 8px 12px; font-size: 12.5px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <div>
-                <i class="fa-solid fa-circle-check" style="color: #4F46E5; margin-right: 6px;"></i>
                 <strong id="selectedEmpNameText"></strong>
               </div>
-              <span id="selectedEmpDeptText" class="badge" style="background: #E0E7FF; color: #3730A3; font-weight: 600;"></span>
+              <span id="selectedEmpDeptText" class="badge badge-neutral"></span>
             </div>
           </div>
         </div>
 
         <div class="form-group">
-          <label class="form-label">เลือกเหตุผลมาตรฐาน (Dropdown List) *</label>
+          <label class="form-label">2. เลือกเหตุผลมาตรฐาน *</label>
           <select class="form-control" id="adjustReasonSelect" required onchange="onReasonSelected()">
             <option value="">-- กรุณาเลือกเหตุผล --</option>
           </select>
         </div>
 
-        <div class="form-group">
-          <label class="form-label">จำนวนคะแนน *</label>
-          <input type="number" step="0.5" class="form-control" id="adjustPoints" required placeholder="เช่น 5">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div class="form-group">
+            <label class="form-label">3. วันที่เกิดเหตุ / ทำรายการ *</label>
+            <input type="date" class="form-control" id="adjustDate" required style="font-weight: 600;">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">4. จำนวนคะแนน *</label>
+            <input type="number" step="0.5" class="form-control" id="adjustPoints" required placeholder="เช่น 5">
+          </div>
         </div>
 
         <div class="form-group">
-          <label class="form-label">รายละเอียด / หมายเหตุเพิ่มเติม</label>
-          <textarea class="form-control" id="adjustDescription" rows="2" placeholder="ระบุรายละเอียดเพิ่มเติม..."></textarea>
+          <label class="form-label">5. รายละเอียด / หมายเหตุเพิ่มเติม</label>
+          <textarea class="form-control" id="adjustDescription" rows="2"
+            placeholder="ระบุรายละเอียดเพิ่มเติม..."></textarea>
         </div>
 
         <div class="form-group">
-          <label class="form-label">แนบรูปภาพหรือหลักฐานความดี/ความเสียหาย (ไม่บังคับ)</label>
+          <label class="form-label">6. แนบรูปภาพหลักฐาน (ไม่บังคับ)</label>
           <input type="file" accept="image/*" class="form-control" id="adjustPhoto">
         </div>
 
-        <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+        <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border);">
           <button type="button" class="btn btn-secondary" onclick="closeAdjustModal()">ยกเลิก</button>
           <button type="submit" class="btn btn-success" id="btnSubmitAdjust">
             <i class="fa-solid fa-check"></i> บันทึกคะแนนทันที
@@ -696,81 +767,95 @@
 
   <!-- Modal: Edit Policy & Auto Rules -->
   <div class="modal-overlay" id="policyModal">
-    <div class="modal-container" style="max-width: 650px;">
+    <div class="modal-container" style="max-width: 640px;">
       <div class="modal-header">
         <h3 class="modal-title" id="policyModalTitle">ตั้งค่าเกณฑ์คะแนนอัตโนมัติ (Auto Scoring Policy)</h3>
         <button class="btn-close" onclick="closePolicyModal()">&times;</button>
       </div>
 
       <form id="policyForm" onsubmit="savePolicySettings(event)">
-        
+
         <!-- Department & Position Dual Selectors -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
           <div class="form-group" style="margin-bottom: 0;">
-            <label class="form-label" style="font-size: 13px;">1. เลือกแผนก / ทีม *</label>
-            <select class="form-control" id="policyDeptSelect" onchange="onPolicyDeptChanged()" style="font-weight: 700; color: #4F46E5; background: #EEF2FF; border-color: #C7D2FE;">
-              <option value="GLOBAL">🌐 เกณฑ์มาตรฐานกลาง (Global)</option>
+            <label class="form-label">1. เลือกแผนก / ทีม *</label>
+            <select class="form-control" id="policyDeptSelect" onchange="onPolicyDeptChanged()"
+              style="font-weight: 600;">
+              <option value="GLOBAL">เกณฑ์มาตรฐานกลาง (Global)</option>
             </select>
           </div>
 
           <div class="form-group" style="margin-bottom: 0;">
-            <label class="form-label" style="font-size: 13px;">2. เลือกระดับตำแหน่งงาน (Position) *</label>
-            <select class="form-control" id="policyPosSelect" onchange="onPolicyPosChanged()" style="font-weight: 700; color: #0EA5E9; background: #F0F9FF; border-color: #BAE6FD;">
-              <option value="ALL">👥 ทุกตำแหน่งในแผนก (All Positions)</option>
+            <label class="form-label">2. เลือกระดับตำแหน่งงาน (Position) *</label>
+            <select class="form-control" id="policyPosSelect" onchange="onPolicyPosChanged()"
+              style="font-weight: 600;">
+              <option value="ALL">ทุกตำแหน่งในแผนก (All Positions)</option>
             </select>
           </div>
         </div>
-        <small style="color: #64748B; font-size: 12px; margin-top: -6px; margin-bottom: 18px; display: block;">
-          * สามารถกำหนดเจาะจงลึกถึงระดับตำแหน่งงาน เช่น Forklift Driver, Picker, RT Driver เพื่อกำหนดวันหยุดและเกณฑ์เฉพาะตำแหน่งได้
+        <small style="color: #64748B; font-size: 11.5px; margin-top: -4px; margin-bottom: 14px; display: block;">
+          สามารถกำหนดเจาะจงระดับตำแหน่งงานเพื่อตั้งวันหยุดประจำสัปดาห์และเกณฑ์คะแนนเฉพาะตำแหน่งได้
         </small>
 
         <!-- Weekly Off Days Selector per Department -->
-        <div class="form-group" style="background: #F8FAFC; border: 1.5px solid #E2E8F0; border-radius: 12px; padding: 14px 16px; margin-bottom: 20px;">
-          <label class="form-label" style="font-weight: 700; color: #1E293B; display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-            <span><i class="fa-solid fa-calendar-week" style="color: #4F46E5;"></i> กำหนดวันหยุดประจำสัปดาห์ของแผนกนี้ (Weekly Day Off) *</span>
+        <div class="form-group"
+          style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 14px; margin-bottom: 16px;">
+          <label class="form-label"
+            style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+            <span>กำหนดวันหยุดประจำสัปดาห์ของแผนกนี้ (Weekly Day Off) *</span>
             <span style="font-size: 11px; font-weight: normal; color: #64748B;">(เลือกได้หลายวัน)</span>
           </label>
-          <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px;" id="weeklyDaysContainer">
-            <label class="day-chip" id="chip_MON"><input type="checkbox" name="weeklyOffDay" value="MON" onchange="updateDayChipActive(this)"> <span>จันทร์ (MON)</span></label>
-            <label class="day-chip" id="chip_TUE"><input type="checkbox" name="weeklyOffDay" value="TUE" onchange="updateDayChipActive(this)"> <span>อังคาร (TUE)</span></label>
-            <label class="day-chip" id="chip_WED"><input type="checkbox" name="weeklyOffDay" value="WED" onchange="updateDayChipActive(this)"> <span>พุธ (WED)</span></label>
-            <label class="day-chip" id="chip_THU"><input type="checkbox" name="weeklyOffDay" value="THU" onchange="updateDayChipActive(this)"> <span>พฤหัสฯ (THU)</span></label>
-            <label class="day-chip" id="chip_FRI"><input type="checkbox" name="weeklyOffDay" value="FRI" onchange="updateDayChipActive(this)"> <span>ศุกร์ (FRI)</span></label>
-            <label class="day-chip" id="chip_SAT"><input type="checkbox" name="weeklyOffDay" value="SAT" onchange="updateDayChipActive(this)"> <span>เสาร์ (SAT)</span></label>
-            <label class="day-chip" id="chip_SUN"><input type="checkbox" name="weeklyOffDay" value="SUN" onchange="updateDayChipActive(this)"> <span>อาทิตย์ (SUN)</span></label>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px;" id="weeklyDaysContainer">
+            <label class="day-chip" id="chip_MON"><input type="checkbox" name="weeklyOffDay" value="MON"
+                onchange="updateDayChipActive(this)"> <span>จันทร์</span></label>
+            <label class="day-chip" id="chip_TUE"><input type="checkbox" name="weeklyOffDay" value="TUE"
+                onchange="updateDayChipActive(this)"> <span>อังคาร</span></label>
+            <label class="day-chip" id="chip_WED"><input type="checkbox" name="weeklyOffDay" value="WED"
+                onchange="updateDayChipActive(this)"> <span>พุธ</span></label>
+            <label class="day-chip" id="chip_THU"><input type="checkbox" name="weeklyOffDay" value="THU"
+                onchange="updateDayChipActive(this)"> <span>พฤหัสฯ</span></label>
+            <label class="day-chip" id="chip_FRI"><input type="checkbox" name="weeklyOffDay" value="FRI"
+                onchange="updateDayChipActive(this)"> <span>ศุกร์</span></label>
+            <label class="day-chip" id="chip_SAT"><input type="checkbox" name="weeklyOffDay" value="SAT"
+                onchange="updateDayChipActive(this)"> <span>เสาร์</span></label>
+            <label class="day-chip" id="chip_SUN"><input type="checkbox" name="weeklyOffDay" value="SUN"
+                onchange="updateDayChipActive(this)"> <span>อาทิตย์</span></label>
           </div>
-          <small style="color: #64748B; font-size: 12px; display: block;">
-            💡 เช่น แผนก <b>OP</b> หยุดวันอาทิตย์, แผนก <b>Transport</b> หยุดวันจันทร์ หากพนักงานมาสแกนนิ้วทำงานในวันหยุดประจำสัปดาห์ของแผนก ระบบจะบวกแต้มให้อัตโนมัติ
+          <small style="color: #64748B; font-size: 11.5px; display: block;">
+            หากพนักงานมาสแกนนิ้วทำงานในวันหยุดประจำสัปดาห์ของแผนก ระบบจะบวกคะแนนพิเศษให้อัตโนมัติ
           </small>
         </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
           <div class="form-group">
-            <label class="form-label">หักขาดงาน (ต่อครั้ง) *</label>
+            <label class="form-label">หักขาดงาน (แต้ม/ครั้ง) *</label>
             <input type="number" step="0.5" class="form-control" id="polAbsentPoints" required placeholder="เช่น 5">
           </div>
 
           <div class="form-group">
-            <label class="form-label">ลาป่วย *</label>
-            <input type="number" step="0.5" class="form-control" id="polUnannouncedPoints" required placeholder="เช่น 3">
+            <label class="form-label">หักลาป่วย (แต้ม/ครั้ง) *</label>
+            <input type="number" step="0.5" class="form-control" id="polUnannouncedPoints" required
+              placeholder="เช่น 3">
           </div>
 
           <div class="form-group">
-            <label class="form-label">บวกเมื่อมาทำวันหยุดสัปดาห์ (แต้ม/วัน) *</label>
+            <label class="form-label">บวกวันหยุดสัปดาห์ (แต้ม/วัน) *</label>
             <input type="number" step="0.5" class="form-control" id="polWeeklyBonus" required placeholder="เช่น 2">
           </div>
 
           <div class="form-group">
-            <label class="form-label">บวกวันหยุดนักขัตฤกษ์ (เท่ากันทั้งบริษัท) *</label>
+            <label class="form-label">บวกวันหยุดนักขัตฤกษ์ (แต้ม/วัน) *</label>
             <input type="number" step="0.5" class="form-control" id="polPublicBonus" required placeholder="เช่น 3">
           </div>
         </div>
 
         <!-- Late Penalty Settings -->
-        <div style="border-top: 1px solid var(--border); padding-top: 16px; margin-top: 10px;">
-          <div style="font-weight: 700; font-size: 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
-            <span><i class="fa-solid fa-business-time" style="color: #4F46E5;"></i> เกณฑ์การคิดคะแนนมาสาย (Late Penalty)</span>
-            <select class="custom-select" id="polLateType" style="padding: 4px 10px; font-size: 12px;" onchange="toggleLateTypeUI()">
+        <div style="border-top: 1px solid var(--border); padding-top: 14px; margin-top: 6px;">
+          <div
+            style="font-weight: 700; font-size: 13px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+            <span>เกณฑ์การคิดคะแนนมาสาย (Late Penalty)</span>
+            <select class="custom-select" id="polLateType" style="padding: 4px 10px; font-size: 12px;"
+              onchange="toggleLateTypeUI()">
               <option value="TIER">คิดแบบขั้นบันไดนาที</option>
               <option value="FIXED">คิดแบบคงที่ต่อครั้ง</option>
             </select>
@@ -782,28 +867,27 @@
           </div>
 
           <div id="tieredLateUI">
-            <div style="font-size: 12px; color: #64748B; margin-bottom: 8px;">กำหนดขั้นบันไดนาทีที่สาย:</div>
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
               <div>
-                <label style="font-size: 11px; font-weight: 600;">สาย 1 - 15 นาที</label>
-                <input type="number" step="0.5" class="form-control" id="tier1Points" placeholder="หักแต้ม เช่น 1">
+                <label class="form-label" style="font-size: 11.5px;">สาย 1 – 15 นาที</label>
+                <input type="number" step="0.5" class="form-control" id="tier1Points" placeholder="เช่น 1">
               </div>
               <div>
-                <label style="font-size: 11px; font-weight: 600;">สาย 16 - 30 นาที</label>
-                <input type="number" step="0.5" class="form-control" id="tier2Points" placeholder="หักแต้ม เช่น 2">
+                <label class="form-label" style="font-size: 11.5px;">สาย 16 – 30 นาที</label>
+                <input type="number" step="0.5" class="form-control" id="tier2Points" placeholder="เช่น 2">
               </div>
               <div>
-                <label style="font-size: 11px; font-weight: 600;">สายเกิน 30 นาที</label>
-                <input type="number" step="0.5" class="form-control" id="tier3Points" placeholder="หักแต้ม เช่น 3">
+                <label class="form-label" style="font-size: 11.5px;">สายเกิน 30 นาที</label>
+                <input type="number" step="0.5" class="form-control" id="tier3Points" placeholder="เช่น 3">
               </div>
             </div>
           </div>
         </div>
 
-        <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+        <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border);">
           <button type="button" class="btn btn-secondary" onclick="closePolicyModal()">ยกเลิก</button>
-          <button type="submit" class="btn btn-success" id="btnSavePolicy">
-            <i class="fa-solid fa-floppy-disk"></i> บันทึกเกณฑ์คะแนน Auto
+          <button type="submit" class="btn btn-primary" id="btnSavePolicy">
+            <i class="fa-solid fa-floppy-disk"></i> บันทึกเกณฑ์คะแนน
           </button>
         </div>
       </form>
@@ -812,38 +896,37 @@
 
   <!-- Modal: Add Holiday -->
   <div class="modal-overlay" id="holidayModal">
-    <div class="modal-container" style="max-width: 500px;">
+    <div class="modal-container" style="max-width: 480px;">
       <div class="modal-header">
         <h3 class="modal-title">เพิ่มวันหยุดนักขัตฤกษ์ประจำปี</h3>
         <button class="btn-close" onclick="closeHolidayModal()">&times;</button>
       </div>
       <form id="holidayForm" onsubmit="saveHoliday(event)">
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
           <div class="form-group">
-            <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
-              <span>ปี (Year) *</span>
-              <span style="font-size: 11px; font-weight: normal; color: #4F46E5; background: #EEF2FF; padding: 1px 6px; border-radius: 4px;">
-                <i class="fa-solid fa-link"></i> ลิงก์ตามวันที่
-              </span>
-            </label>
-            <input type="number" class="form-control" id="holYear" value="2026" required min="2020" max="2099" style="font-weight: 700; color: #4F46E5; background: #EEF2FF; border-color: #C7D2FE;" oninput="onHolidayYearChanged()" onchange="onHolidayYearChanged()">
+            <label class="form-label">ปี (Year) *</label>
+            <input type="number" class="form-control" id="holYear" value="2026" required min="2020" max="2099"
+              style="font-weight: 600;"
+              oninput="onHolidayYearChanged()" onchange="onHolidayYearChanged()">
           </div>
           <div class="form-group">
             <label class="form-label">วันที่วันหยุด (Date) *</label>
-            <input type="date" class="form-control" id="holDate" required oninput="onHolidayDateChanged()" onchange="onHolidayDateChanged()" style="font-weight: 600;">
+            <input type="date" class="form-control" id="holDate" required oninput="onHolidayDateChanged()"
+              onchange="onHolidayDateChanged()" style="font-weight: 600;">
           </div>
         </div>
         <div class="form-group">
           <label class="form-label">ชื่อวันหยุดนักขัตฤกษ์ *</label>
-          <input type="text" class="form-control" id="holName" required placeholder="เช่น วันแรงงานแห่งชาติ, วันหยุดชดเชย...">
+          <input type="text" class="form-control" id="holName" required
+            placeholder="เช่น วันแรงงานแห่งชาติ, วันหยุดชดเชย...">
         </div>
         <div class="form-group">
           <label class="form-label">รายละเอียด / หมายเหตุ</label>
           <input type="text" class="form-control" id="holDesc" placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)">
         </div>
-        <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+        <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border);">
           <button type="button" class="btn btn-secondary" onclick="closeHolidayModal()">ยกเลิก</button>
-          <button type="submit" class="btn btn-success" id="btnSaveHoliday">
+          <button type="submit" class="btn btn-primary" id="btnSaveHoliday">
             <i class="fa-solid fa-check"></i> บันทึกวันหยุด
           </button>
         </div>
@@ -853,7 +936,7 @@
 
   <!-- Modal: Create / Edit Scoring Period -->
   <div class="modal-overlay" id="periodModal">
-    <div class="modal-container" style="max-width: 500px;">
+    <div class="modal-container" style="max-width: 480px;">
       <div class="modal-header">
         <h3 class="modal-title" id="periodModalTitle">สร้างรอบการประเมินคะแนนใหม่</h3>
         <button class="btn-close" onclick="closePeriodModal()">&times;</button>
@@ -864,7 +947,7 @@
           <label class="form-label">ชื่อรอบการประเมิน (Period Name) *</label>
           <input type="text" class="form-control" id="perName" required placeholder="เช่น รอบประเมินประจำปี 2027">
         </div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
           <div class="form-group">
             <label class="form-label">วันเริ่มต้น (Start Date) *</label>
             <input type="date" class="form-control" id="perStartDate" required>
@@ -878,13 +961,15 @@
           <label class="form-label">คะแนนตั้งต้นเริ่มต้น (Initial Score) *</label>
           <input type="number" step="0.5" class="form-control" id="perInitialScore" value="100.0" required>
         </div>
-        <div class="form-group" style="display: flex; align-items: center; gap: 8px; margin-top: 10px;">
-          <input type="checkbox" id="perIsActive" checked style="width: 18px; height: 18px; accent-color: var(--primary); cursor: pointer;">
-          <label for="perIsActive" style="font-size: 13px; font-weight: 600; cursor: pointer;">ตั้งเป็นรอบการประเมินปัจจุบัน (Set as Active)</label>
+        <div class="form-group" style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+          <input type="checkbox" id="perIsActive" checked
+            style="width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer;">
+          <label for="perIsActive"
+            style="font-size: 13px; font-weight: 600; cursor: pointer;">ตั้งเป็นรอบการประเมินปัจจุบัน (Set as Active)</label>
         </div>
-        <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+        <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border);">
           <button type="button" class="btn btn-secondary" onclick="closePeriodModal()">ยกเลิก</button>
-          <button type="submit" class="btn btn-success" id="btnSavePeriod">
+          <button type="submit" class="btn btn-primary" id="btnSavePeriod">
             <i class="fa-solid fa-check"></i> <span id="btnSavePeriodText">สร้างรอบประเมิน</span>
           </button>
         </div>
@@ -894,74 +979,84 @@
 
   <!-- Modal: Grade Criteria Configuration -->
   <div class="modal-overlay" id="gradeModal">
-    <div class="modal-container" style="max-width: 520px;">
+    <div class="modal-container" style="max-width: 500px;">
       <div class="modal-header">
-        <h3 class="modal-title"><i class="fa-solid fa-award" style="color: #F59E0B; margin-right: 8px;"></i>กำหนดเกณฑ์คะแนนตัดเกรด (Grade Criteria)</h3>
+        <h3 class="modal-title">กำหนดเกณฑ์คะแนนตัดเกรด (Grade Criteria)</h3>
         <button class="btn-close" onclick="closeGradeModal()">&times;</button>
       </div>
       <form id="gradeForm" onsubmit="saveGradeSettings(event)">
-        <p style="font-size: 13px; color: #64748B; margin-bottom: 20px;">
+        <p style="font-size: 12.5px; color: #64748B; margin-bottom: 16px;">
           กำหนดช่วงคะแนนสุทธิสำหรับจัดระดับผลงานพนักงาน (ระบบจะคำนวณเกรดใหม่อัตโนมัติทันทีหลังบันทึก)
         </p>
 
         <!-- Grade A -->
-        <div style="background: #F0FDF4; border: 1.5px solid #BBF7D0; border-radius: 12px; padding: 14px 16px; margin-bottom: 12px;">
+        <div
+          style="background: #F8FAFC; border: 1px solid #E2E8F0; border-left: 4px solid #059669; border-radius: 6px; padding: 12px 14px; margin-bottom: 10px;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span class="badge badge-grade-A" style="font-size: 13px;">เกรด A</span>
-              <strong style="color: #166534;">ดีเยี่ยม (Excellent)</strong>
+              <span class="badge badge-grade-A">เกรด A</span>
+              <strong style="color: #0F172A; font-size: 13px;">ดีเยี่ยม (Excellent)</strong>
             </div>
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 13px; color: #475569;">คะแนน &ge;</span>
-              <input type="number" step="0.5" class="form-control" id="cfgGradeA" style="width: 100px; font-weight: 700; text-align: center; color: #166534;" required oninput="updateGradeDHelper()">
+              <span style="font-size: 12.5px; color: #475569;">คะแนน &ge;</span>
+              <input type="number" step="0.5" class="form-control" id="cfgGradeA"
+                style="width: 90px; font-weight: 700; text-align: center;" required
+                oninput="updateGradeDHelper()">
             </div>
           </div>
         </div>
 
         <!-- Grade B -->
-        <div style="background: #EFF6FF; border: 1.5px solid #BFDBFE; border-radius: 12px; padding: 14px 16px; margin-bottom: 12px;">
+        <div
+          style="background: #F8FAFC; border: 1px solid #E2E8F0; border-left: 4px solid #2563EB; border-radius: 6px; padding: 12px 14px; margin-bottom: 10px;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span class="badge badge-grade-B" style="font-size: 13px;">เกรด B</span>
-              <strong style="color: #1E40AF;">ดี (Good)</strong>
+              <span class="badge badge-grade-B">เกรด B</span>
+              <strong style="color: #0F172A; font-size: 13px;">ดี (Good)</strong>
             </div>
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 13px; color: #475569;">คะแนน &ge;</span>
-              <input type="number" step="0.5" class="form-control" id="cfgGradeB" style="width: 100px; font-weight: 700; text-align: center; color: #1E40AF;" required oninput="updateGradeDHelper()">
+              <span style="font-size: 12.5px; color: #475569;">คะแนน &ge;</span>
+              <input type="number" step="0.5" class="form-control" id="cfgGradeB"
+                style="width: 90px; font-weight: 700; text-align: center;" required
+                oninput="updateGradeDHelper()">
             </div>
           </div>
         </div>
 
         <!-- Grade C -->
-        <div style="background: #FFFBEB; border: 1.5px solid #FDE68A; border-radius: 12px; padding: 14px 16px; margin-bottom: 12px;">
+        <div
+          style="background: #F8FAFC; border: 1px solid #E2E8F0; border-left: 4px solid #D97706; border-radius: 6px; padding: 12px 14px; margin-bottom: 10px;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span class="badge badge-grade-C" style="font-size: 13px;">เกรด C</span>
-              <strong style="color: #92400E;">ปานกลาง (Fair)</strong>
+              <span class="badge badge-grade-C">เกรด C</span>
+              <strong style="color: #0F172A; font-size: 13px;">ปานกลาง (Fair)</strong>
             </div>
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 13px; color: #475569;">คะแนน &ge;</span>
-              <input type="number" step="0.5" class="form-control" id="cfgGradeC" style="width: 100px; font-weight: 700; text-align: center; color: #92400E;" required oninput="updateGradeDHelper()">
+              <span style="font-size: 12.5px; color: #475569;">คะแนน &ge;</span>
+              <input type="number" step="0.5" class="form-control" id="cfgGradeC"
+                style="width: 90px; font-weight: 700; text-align: center;" required
+                oninput="updateGradeDHelper()">
             </div>
           </div>
         </div>
 
         <!-- Grade D -->
-        <div style="background: #FEF2F2; border: 1.5px solid #FECACA; border-radius: 12px; padding: 14px 16px; margin-bottom: 20px;">
+        <div
+          style="background: #F8FAFC; border: 1px solid #E2E8F0; border-left: 4px solid #DC2626; border-radius: 6px; padding: 12px 14px; margin-bottom: 18px;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span class="badge badge-grade-D" style="font-size: 13px;">เกรด D</span>
-              <strong style="color: #991B1B;">ต้องปรับปรุง (Improvement)</strong>
+              <span class="badge badge-grade-D">เกรด D</span>
+              <strong style="color: #0F172A; font-size: 13px;">ต้องปรับปรุง (Improvement)</strong>
             </div>
-            <div style="font-size: 13px; color: #991B1B; font-weight: 600;" id="cfgGradeDLabel">
-              คะแนนต่ำกว่าเกรด C (< 70.0)
+            <div style="font-size: 12.5px; color: #DC2626; font-weight: 600;" id="cfgGradeDLabel">
+              คะแนนต่ำกว่าเกรด C (&lt; 70.0)
             </div>
           </div>
         </div>
 
-        <div style="display: flex; justify-content: flex-end; gap: 12px;">
+        <div style="display: flex; justify-content: flex-end; gap: 8px; padding-top: 14px; border-top: 1px solid var(--border);">
           <button type="button" class="btn btn-secondary" onclick="closeGradeModal()">ยกเลิก</button>
-          <button type="submit" class="btn btn-success" id="btnSaveGrade">
+          <button type="submit" class="btn btn-primary" id="btnSaveGrade">
             <i class="fa-solid fa-check"></i> บันทึกเกณฑ์ตัดเกรด
           </button>
         </div>
@@ -969,35 +1064,43 @@
     </div>
   </div>
 
-  <!-- Modal: Supervisor Login Gate (Desktop - Required Every Visit) -->
-  <div class="modal-overlay active" id="loginModal" style="background: rgba(15, 23, 42, 0.94); backdrop-filter: blur(12px); z-index: 9999;">
-    <div class="modal-container" style="max-width: 440px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);">
+  <!-- Modal: Supervisor Login Gate -->
+  <div class="modal-overlay" id="loginModal"
+    style="background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(4px); z-index: 9999;">
+    <div class="modal-container" style="max-width: 420px;">
       <div class="modal-header">
-        <h3 class="modal-title"><i class="fa-solid fa-user-shield" style="color: #4F46E5;"></i> เข้าสู่ระบบจัดการ KPI Portal</h3>
-        <button class="btn-close" id="btnCloseLoginModal" onclick="closeLoginModal()" style="display: none;">&times;</button>
+        <h3 class="modal-title"><i class="fa-solid fa-lock" style="color: #2563EB;"></i> เข้าสู่ระบบจัดการ KPI Portal</h3>
+        <button class="btn-close" id="btnCloseLoginModal" onclick="closeLoginModal()"
+          style="display: none;">&times;</button>
       </div>
       <form id="desktopLoginForm" onsubmit="handleDesktopLogin(event)">
-        <p style="font-size: 13px; color: #64748B; margin-bottom: 16px; line-height: 1.5;">
-          กรุณาเข้าสู่ระบบด้วยบัญชีหัวหน้างาน / ผู้ดูแลระบบ ทุกครั้งก่อนเข้าใช้งานหน้าเว็บจัดการข้อมูล
+        <p style="font-size: 12.5px; color: #64748B; margin-bottom: 14px; line-height: 1.5;">
+          กรุณาเข้าสู่ระบบด้วยบัญชีหัวหน้างาน หรือผู้ดูแลระบบ เพื่อเข้าใช้งานระบบบริหารจัดการคะแนน
         </p>
         <div class="form-group">
-          <label class="form-label">Username / รหัสพนักงานหัวหน้างาน *</label>
-          <input type="text" id="desktopLoginUsername" class="form-control" required placeholder="เช่น 102205 หรือ admin" style="font-weight: 600;" autofocus>
+          <label class="form-label">รหัสผู้ใช้งาน / รหัสพนักงานหัวหน้างาน *</label>
+          <input type="text" id="desktopLoginUsername" class="form-control" required
+            placeholder="เช่น 102205 หรือ admin" style="font-weight: 600;" autofocus>
         </div>
         <div class="form-group">
           <label class="form-label">รหัสผ่าน (Password) *</label>
           <input type="password" id="desktopLoginPassword" class="form-control" required placeholder="กรอกรหัสผ่าน">
         </div>
-        <div id="desktopLoginError" style="display: none; background: #FEE2E2; border: 1.5px solid #FCA5A5; color: #B91C1C; padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 14px;"></div>
-        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
-          <button type="button" class="btn btn-secondary" id="btnCancelLoginModal" onclick="closeLoginModal()" style="display: none;">ยกเลิก</button>
-          <button type="submit" class="btn btn-primary" id="btnDesktopLoginSubmit" style="width: 100%; justify-content: center; padding: 11px;">
+        <div id="desktopLoginError"
+          style="display: none; background: #FEF2F2; border: 1px solid #FECACA; color: #B91C1C; padding: 9px 12px; border-radius: 6px; font-size: 12.5px; margin-bottom: 14px;">
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px;">
+          <button type="button" class="btn btn-secondary" id="btnCancelLoginModal" onclick="closeLoginModal()"
+            style="display: none;">ยกเลิก</button>
+          <button type="submit" class="btn btn-primary" id="btnDesktopLoginSubmit"
+            style="width: 100%; justify-content: center; padding: 9px;">
             <i class="fa-solid fa-right-to-bracket"></i> เข้าสู่ระบบ
           </button>
         </div>
-        <div style="margin-top: 16px; padding-top: 12px; border-top: 1px dashed #E2E8F0; text-align: center; font-size: 12.5px;">
-          <a href="/mobile.html" style="color: #4F46E5; text-decoration: none; font-weight: 600;">
-            <i class="fa-solid fa-mobile-screen-button"></i> สำหรับพนักงานดูคะแนนตนเอง (ไม่ต้องล็อกอิน) คลิกที่นี่
+        <div
+          style="margin-top: 14px; padding-top: 12px; border-top: 1px solid #E2E8F0; text-align: center; font-size: 12px;">
+          <a href="/mobile.html" style="color: #2563EB; text-decoration: none; font-weight: 600;">
+            <i class="fa-solid fa-mobile-screen-button"></i> สำหรับพนักงานตรวจสอบคะแนนตนเอง คลิกที่นี่
           </a>
         </div>
       </form>
@@ -1006,43 +1109,50 @@
 
   <!-- Modal: Assign Employee to Difficult Station -->
   <div class="modal-overlay" id="assignStationModal">
-    <div class="modal-container" style="max-width: 520px;">
+    <div class="modal-container" style="max-width: 500px;">
       <div class="modal-header">
-        <h3 class="modal-title"><i class="fa-solid fa-user-plus" style="color: #4F46E5;"></i> กำหนดพนักงานประจำจุดจ่ายงานยาก</h3>
+        <h3 class="modal-title">กำหนดพนักงานประจำจุดจ่ายงานยาก</h3>
         <button class="btn-close" onclick="closeAssignStationModal()">&times;</button>
       </div>
       <form id="assignStationForm" onsubmit="submitAssignStation(event)">
-        <p style="font-size: 13px; color: #64748B; margin-bottom: 16px;">
-          พนักงานที่ถูกกำหนดจะได้รับคะแนนบวกอัตโนมัติ (+10 คะแนน หรือตามเกณฑ์ของจุดงาน)
+        <p style="font-size: 12.5px; color: #64748B; margin-bottom: 14px;">
+          พนักงานที่ถูกกำหนดจะได้รับคะแนนบวกอัตโนมัติตามเกณฑ์ของจุดงานที่เลือก
         </p>
 
         <!-- Employee Select with Search & Dept Check -->
-        <div class="form-group" style="margin-bottom: 16px;">
+        <div class="form-group">
           <label class="form-label">1. เลือกรหัส หรือ ชื่อพนักงาน *</label>
           <div style="position: relative; margin-bottom: 8px;">
-            <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #94A3B8; font-size: 13px;"></i>
-            <input type="text" id="assignEmpSearchInput" class="form-control" placeholder="🔍 ค้นหารหัสพนักงาน, ชื่อ, หรือแผนก..." oninput="filterAssignStationEmployees()" style="padding-left: 36px; font-size: 13px;">
+            <i class="fa-solid fa-magnifying-glass"
+              style="position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: #94A3B8; font-size: 12.5px;"></i>
+            <input type="text" id="assignEmpSearchInput" class="form-control"
+              placeholder="ค้นหารหัสพนักงาน, ชื่อ, หรือแผนก..." oninput="filterAssignStationEmployees()"
+              style="padding-left: 32px;">
           </div>
-          <select class="form-control" id="assignStationEmpSelect" required onchange="onAssignStationEmpSelected()" style="font-weight: 600;">
+          <select class="form-control" id="assignStationEmpSelect" required onchange="onAssignStationEmpSelected()"
+            style="font-weight: 600;">
             <option value="">-- เลือกรหัส/ชื่อพนักงาน --</option>
           </select>
-          <div id="assignEmpDeptBadge" style="margin-top: 8px; display: none; padding: 8px 12px; border-radius: 8px; font-size: 13px;"></div>
+          <div id="assignEmpDeptBadge"
+            style="margin-top: 8px; display: none; padding: 8px 12px; border-radius: 6px; font-size: 12.5px;"></div>
         </div>
 
         <!-- Station Select -->
         <div class="form-group">
           <label class="form-label">2. เลือกจุดจ่ายงานยาก (Difficult Station) *</label>
-          <select class="form-control" id="assignStationCodeSelect" required onchange="onAssignStationCodeChanged()" style="font-weight: 700; color: #4338CA; background: #EEF2FF; border-color: #C7D2FE;">
-            <!-- Populated dynamically from kpi_station_point_configs -->
+          <select class="form-control" id="assignStationCodeSelect" required onchange="onAssignStationCodeChanged()"
+            style="font-weight: 600;">
           </select>
-          <div id="assignStationPreviewPoints" style="font-size: 12px; color: #059669; font-weight: 600; margin-top: 6px;"></div>
+          <div id="assignStationPreviewPoints"
+            style="font-size: 12px; color: #059669; font-weight: 600; margin-top: 6px;"></div>
         </div>
 
         <!-- Monthly Cycle Select -->
         <div class="form-group">
           <label class="form-label">3. รอบเดือนที่คิดคะแนน (Monthly Cycle) *</label>
-          <select class="form-control" id="assignStationMonthSelect" required onchange="onAssignStationCodeChanged()" style="font-weight: 600;">
-            <option value="ALL">🔄 รอบประจำทุกเดือน (สะสมทุกเดือนในรอบประเมิน)</option>
+          <select class="form-control" id="assignStationMonthSelect" required onchange="onAssignStationCodeChanged()"
+            style="font-weight: 600;">
+            <option value="ALL">รอบประจำทุกเดือน (สะสมทุกเดือนในรอบประเมิน)</option>
           </select>
           <div id="assignMonthDesc" style="font-size: 11.5px; color: #64748B; margin-top: 4px;">
             ระบบจะคำนวณบวกคะแนนให้ตามรอบทุกเดือนที่ประจำจุดนี้
@@ -1052,13 +1162,14 @@
         <!-- Remark -->
         <div class="form-group">
           <label class="form-label">4. หมายเหตุ / เหตุผลการมอบหมาย (ไม่บังคับ)</label>
-          <input type="text" class="form-control" id="assignStationRemark" placeholder="เช่น ประจำจุด E Picking โซน B ตามคำสั่งหัวหน้างาน">
+          <input type="text" class="form-control" id="assignStationRemark"
+            placeholder="เช่น ประจำจุด E Picking โซน B ตามคำสั่งหัวหน้างาน">
         </div>
 
-        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;">
+        <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border);">
           <button type="button" class="btn btn-secondary" onclick="closeAssignStationModal()">ยกเลิก</button>
-          <button type="submit" class="btn btn-success" id="btnSubmitAssignStation">
-            <i class="fa-solid fa-check"></i> บันทึกและคำนวณคะแนนทันที
+          <button type="submit" class="btn btn-primary" id="btnSubmitAssignStation">
+            <i class="fa-solid fa-check"></i> บันทึกและคำนวณคะแนน
           </button>
         </div>
       </form>
@@ -1067,28 +1178,31 @@
 
   <!-- Modal: Station Config Modal (Add/Edit Difficult Station) -->
   <div class="modal-overlay" id="stationConfigModal">
-    <div class="modal-container" style="max-width: 480px;">
+    <div class="modal-container" style="max-width: 460px;">
       <div class="modal-header">
-        <h3 class="modal-title" id="stationConfigModalTitle"><i class="fa-solid fa-gear" style="color: #4F46E5;"></i> ตั้งค่าเกณฑ์คะแนนจุดงานยาก</h3>
+        <h3 class="modal-title" id="stationConfigModalTitle">ตั้งค่าเกณฑ์คะแนนจุดงานยาก</h3>
         <button class="btn-close" onclick="closeStationConfigModal()">&times;</button>
       </div>
       <form id="stationConfigForm" onsubmit="submitStationConfig(event)">
         <input type="hidden" id="stationConfigIsEdit" value="0">
-        
+
         <div class="form-group">
           <label class="form-label">รหัสจุดงาน (Station Code) *</label>
-          <input type="text" class="form-control" id="cfgStationCode" required placeholder="เช่น E_PICKING, SR, PIECE_PICKING" style="font-weight: 700; text-transform: uppercase;">
+          <input type="text" class="form-control" id="cfgStationCode" required
+            placeholder="เช่น E_PICKING, SR, PIECE_PICKING" style="font-weight: 600; text-transform: uppercase;">
         </div>
 
         <div class="form-group">
           <label class="form-label">ชื่อจุดงานยาก (Station Name) *</label>
-          <input type="text" class="form-control" id="cfgStationName" required placeholder="เช่น E Picking (จ่ายงานยาก E-Commerce)">
+          <input type="text" class="form-control" id="cfgStationName" required
+            placeholder="เช่น E Picking (จ่ายงานยาก E-Commerce)">
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
           <div class="form-group">
             <label class="form-label">คะแนนบวกอัตโนมัติ *</label>
-            <input type="number" step="0.5" class="form-control" id="cfgBonusPoints" required value="10.0" style="font-weight: 700; color: #059669;">
+            <input type="number" step="0.5" class="form-control" id="cfgBonusPoints" required value="10.0"
+              style="font-weight: 700; color: #059669;">
           </div>
           <div class="form-group">
             <label class="form-label">ความถี่การบวกคะแนน *</label>
@@ -1100,16 +1214,17 @@
         </div>
 
         <div class="form-group">
-          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
-            <input type="checkbox" id="cfgStationIsActive" checked style="width: 16px; height: 16px;">
+          <label
+            style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+            <input type="checkbox" id="cfgStationIsActive" checked style="width: 16px; height: 16px; accent-color: var(--primary);">
             <span>เปิดใช้งานเกณฑ์คะแนนสำหรับจุดนี้ (Active)</span>
           </label>
         </div>
 
-        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;">
+        <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border);">
           <button type="button" class="btn btn-secondary" onclick="closeStationConfigModal()">ยกเลิก</button>
           <button type="submit" class="btn btn-primary" id="btnSubmitStationConfig">
-            <i class="fa-solid fa-save"></i> บันทึกการตั้งค่า
+            <i class="fa-solid fa-floppy-disk"></i> บันทึกการตั้งค่า
           </button>
         </div>
       </form>
@@ -1118,49 +1233,54 @@
 
   <!-- Modal: View Evidence Photo -->
   <div class="modal-overlay" id="txPhotoModal">
-    <div class="modal-container" style="max-width: 550px; text-align: center;">
+    <div class="modal-container" style="max-width: 540px; text-align: center;">
       <div class="modal-header">
         <h3 class="modal-title">รูปภาพหลักฐานการปรับคะแนน</h3>
         <button class="btn-close" onclick="closeTxPhotoModal()">&times;</button>
       </div>
-      <div style="padding: 16px;">
-        <img id="txPhotoModalImg" src="" alt="Evidence" style="max-width: 100%; max-height: 450px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+      <div style="padding: 12px;">
+        <img id="txPhotoModalImg" src="" alt="Evidence"
+          style="max-width: 100%; max-height: 440px; border-radius: 6px; border: 1px solid var(--border);">
       </div>
     </div>
   </div>
 
   <!-- Modal: Cloud Sync Configuration (Supabase + Render 4G/5G) -->
   <div class="modal-overlay" id="cloudSyncModal">
-    <div class="modal-container" style="max-width: 600px;">
+    <div class="modal-container" style="max-width: 580px;">
       <div class="modal-header">
         <h3 class="modal-title">
-          <i class="fa-solid fa-cloud-bolt" style="color: #4F46E5; margin-right: 6px;"></i>
-          ตั้งค่า 2-Database Hybrid Sync (Supabase + Render 4G/5G)
+          ตั้งค่าการซิงค์ฐานข้อมูล Hybrid Sync (On-Premise & Cloud)
         </h3>
         <button class="btn-close" onclick="closeCloudSyncModal()">&times;</button>
       </div>
 
       <form id="cloudSyncForm" onsubmit="saveCloudSyncSettings(event)">
-        <div style="background: #EEF2FF; border: 1px solid #C7D2FE; border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; font-size: 12.5px; color: #3730A3; line-height: 1.5;">
-          <strong><i class="fa-solid fa-circle-info"></i> โหมดแยก 2 ฐานข้อมูล (On-Premise 10.5.3.242 ⇄ Cloud Supabase):</strong><br>
-          • <b>ในบริษัท (Wi-Fi/LAN):</b> ทำงานผ่านฐานข้อมูล <code>10.5.3.242</code> รวดเร็ว ไม่พึ่งเน็ตนอก<br>
-          • <b>นอกบริษัท (4G/5G):</b> เข้าผ่านลิงก์ถาวรของ <b>Render</b> ที่เชื่อมกับ <b>Supabase</b><br>
-          • ระบบจะดึงรายการตัดแต้มจาก 4G/5G ลงมาคำนวณในบริษัท และอัปเดตคะแนนสรุปขึ้น Supabase อัตโนมัติ (พร้อมสร้างตารางบน Supabase ให้อัตโนมัติทันทีที่กด Sync!)
+        <div
+          style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 12px 14px; margin-bottom: 14px; font-size: 12px; color: #334155; line-height: 1.6;">
+          <strong style="color: #0F172A;">การทำงานแบบ 2 ฐานข้อมูล (10.5.3.242 & Supabase Cloud):</strong><br>
+          • <b>เครือข่ายภายใน (LAN):</b> ประมวลผลผ่านเซิร์ฟเวอร์ <code>10.5.3.242</code> โดยตรง<br>
+          • <b>เครือข่ายภายนอก (4G/5G):</b> ใช้งานผ่าน Render URL ที่เชื่อมต่อกับ Supabase<br>
+          • ระบบซิงค์รายการปรับคะแนนและอัปเดตผลสรุประหว่างสองฝั่งโดยอัตโนมัติ
         </div>
 
-        <div id="cloudLastSyncBox" style="display: none; background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; font-size: 12.5px; color: #065F46;">
+        <div id="cloudLastSyncBox"
+          style="display: none; background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 6px; padding: 10px 12px; margin-bottom: 14px; font-size: 12px; color: #065F46;">
         </div>
 
         <div class="form-group">
-          <label class="form-label">1. Supabase PostgreSQL Connection URI (Transaction / Session Pooler) *</label>
-          <input type="password" class="form-control" id="cfgSupabaseDbUrl" placeholder="postgresql://postgres.xxxx:รหัสผ่าน@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres" style="font-family: monospace; font-size: 12.5px;">
+          <label class="form-label">1. Supabase PostgreSQL Connection URI *</label>
+          <input type="password" class="form-control" id="cfgSupabaseDbUrl"
+            placeholder="postgresql://postgres.xxxx:password@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres"
+            style="font-family: monospace; font-size: 12px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
-            <span style="font-size: 11.5px; color: #64748B;">คัดลอกจาก Supabase ➔ Connect ➔ Connection String (URI)</span>
+            <span style="font-size: 11px; color: #64748B;">คัดลอกจาก Supabase &rarr; Connect &rarr; Connection String (URI)</span>
             <div style="display: flex; gap: 6px;">
-              <button type="button" class="btn btn-sm btn-secondary" onclick="toggleSupabaseUrlVisibility()" style="padding: 3px 8px; font-size: 11px;">
+              <button type="button" class="btn btn-sm btn-secondary" onclick="toggleSupabaseUrlVisibility()">
                 <i class="fa-solid fa-eye"></i> แสดง/ซ่อน
               </button>
-              <button type="button" class="btn btn-sm btn-secondary" onclick="testSupabaseConnection()" id="btnTestSupabase" style="padding: 3px 10px; font-size: 11px; color: #4F46E5; border-color: #C7D2FE;">
+              <button type="button" class="btn btn-sm btn-secondary" onclick="testSupabaseConnection()"
+                id="btnTestSupabase">
                 <i class="fa-solid fa-plug-circle-check"></i> ทดสอบเชื่อมต่อ
               </button>
             </div>
@@ -1168,38 +1288,44 @@
         </div>
 
         <div class="form-group">
-          <label class="form-label">2. ลิงก์เว็บ Render สำหรับ 4G/5G (Render Public URL)</label>
-          <input type="url" class="form-control" id="cfgRenderAppUrl" placeholder="เช่น https://warelio-kpi.onrender.com" oninput="updateMobile4gLinkPreview()">
-          <div id="mobile4gLinkPreview" style="display: none; margin-top: 8px; background: #F8FAFC; border: 1px dashed #94A3B8; border-radius: 8px; padding: 8px 12px; font-size: 12.5px;">
+          <label class="form-label">2. ลิงก์เว็บไซต์สำหรับภายนอก (Render Public URL)</label>
+          <input type="url" class="form-control" id="cfgRenderAppUrl"
+            placeholder="เช่น https://warelio-kpi.onrender.com" oninput="updateMobile4gLinkPreview()">
+          <div id="mobile4gLinkPreview"
+            style="display: none; margin-top: 8px; background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 6px; padding: 8px 12px; font-size: 12px;">
           </div>
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: center;">
           <div class="form-group" style="margin-bottom: 0;">
-            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
-              <input type="checkbox" id="cfgAutoSyncEnabled" checked style="width: 16px; height: 16px;">
+            <label
+              style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12.5px; font-weight: 600;">
+              <input type="checkbox" id="cfgAutoSyncEnabled" checked style="width: 15px; height: 15px; accent-color: var(--primary);">
               <span>เปิด Auto-Sync อัตโนมัติเบื้องหลัง</span>
             </label>
           </div>
           <div class="form-group" style="margin-bottom: 0;">
-            <label class="form-label" style="margin-bottom: 4px;">รอบเวลา Auto-Sync (นาที)</label>
-            <input type="number" min="1" max="60" class="form-control" id="cfgSyncIntervalMins" value="5" style="font-weight: 700;">
+            <label class="form-label" style="margin-bottom: 4px;">ความถี่ Auto-Sync (นาที)</label>
+            <input type="number" min="1" max="60" class="form-control" id="cfgSyncIntervalMins" value="5"
+              style="font-weight: 600;">
           </div>
         </div>
 
-        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; padding-top: 14px; border-top: 1px solid #E2E8F0;">
+        <div
+          style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; padding-top: 14px; border-top: 1px solid #E2E8F0;">
           <button type="button" class="btn btn-secondary" onclick="closeCloudSyncModal()">ปิด</button>
           <button type="submit" class="btn btn-primary" id="btnSaveCloudSync">
-            <i class="fa-solid fa-floppy-disk"></i> บันทึกตั้งค่า Cloud
+            <i class="fa-solid fa-floppy-disk"></i> บันทึกการตั้งค่า
           </button>
           <button type="button" class="btn btn-success" onclick="saveAndTriggerSyncNow()" id="btnSaveAndSyncNow">
-            <i class="fa-solid fa-cloud-arrow-up"></i> บันทึก & Sync ทันที
+            <i class="fa-solid fa-arrows-rotate"></i> บันทึก & Sync ทันที
           </button>
         </div>
       </form>
     </div>
   </div>
 
-  <script src="js/app.js"></script>
+  <script src="js/app.js?v=20261029_pro"></script>
 </body>
+
 </html>

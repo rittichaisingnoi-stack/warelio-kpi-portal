@@ -434,6 +434,8 @@
           <select class="form-ctrl" id="mReasonSelect" required onchange="onMobileReasonChange()">
             <option value="">-- เลือกเหตุผลมาตรฐาน --</option>
           </select>
+          <div style="margin-bottom: 4px; font-size: 12px; font-weight: 600; color: #475569;">วันที่เกิดเหตุ / ทำรายการ</div>
+          <input type="date" class="form-ctrl" id="mAdjustDate" required style="font-weight: 600;">
           <input type="number" step="0.5" class="form-ctrl" id="mPoints" placeholder="จำนวนคะแนน" required>
           <textarea class="form-ctrl" id="mDescription" rows="2" placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)"></textarea>
 
@@ -459,7 +461,17 @@
     let supervisorUser = null;
     let mobileEmployeesList = [];
 
+    function getMobileTodayISO() {
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
+      const mDateEl = document.getElementById('mAdjustDate');
+      if (mDateEl) mDateEl.value = getMobileTodayISO();
       // ตรวจสอบรหัสพนักงานที่จำไว้
       const savedEmpId = localStorage.getItem('warelio_emp_id');
       if (savedEmpId) {
@@ -788,6 +800,7 @@
 
       const emCode = document.getElementById('mEmpCode').value.trim();
       const reasonCode = document.getElementById('mReasonSelect').value;
+      const transactionDate = document.getElementById('mAdjustDate')?.value || getMobileTodayISO();
       const points = document.getElementById('mPoints').value;
       const description = document.getElementById('mDescription').value;
       const photo = document.getElementById('mPhotoInput');
@@ -813,6 +826,7 @@
       formData.append('points', points);
       formData.append('reason_code', reasonCode);
       formData.append('reason_description', description);
+      formData.append('transaction_date', transactionDate);
       formData.append('created_by', supervisorUser.username);
 
       if (photo.files.length > 0) {
@@ -833,6 +847,8 @@
 
         alert('บันทึกการปรับคะแนนสำเร็จเรียบร้อย!');
         document.getElementById('mobileAdjustForm').reset();
+        const mDateEl = document.getElementById('mAdjustDate');
+        if (mDateEl) mDateEl.value = getMobileTodayISO();
         document.getElementById('photoLabel').innerText = 'แตะเพื่อถ่ายรูป / แนบหลักฐาน';
       } catch (err) {
         alert('เกิดข้อผิดพลาด: ' + err.message);

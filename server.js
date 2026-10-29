@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const multer = require('multer');
 const xlsx = require('xlsx');
 const bcrypt = require('bcryptjs');
@@ -40,8 +41,17 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
 
-// Serve static frontend files
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve static frontend files (Disable cache for HTML/JS so updates take effect immediately)
+app.use(express.static(path.join(__dirname, 'public'), {
+  etag: false,
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html') || filePath.endsWith('.js') || filePath.endsWith('.css')) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+  }
+}));
 app.use('/uploads', express.static(uploadDir));
 
 // ==============================================================================
@@ -105,6 +115,69 @@ app.post('/api/auth/login', async (req, res) => {
     });
   } catch (err) {
     console.error('Login error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 0.1 API: SSO Login จากระบบหลัก Warelio (เฉพาะ Local Intranet 10.5.3.242:8882)
+app.post('/api/auth/sso', async (req, res) => {
+  try {
+    if (pool.isCloudInstance) {
+      return res.status(403).json({ success: false, message: 'หน้าเว็บภายนอก (Cloud) ต้องเข้าสู่ระบบด้วยรหัสผ่านทุกครั้ง' });
+    }
+    const { sso_user, ts, token } = req.body;
+    if (!sso_user || !ts || !token) {
+      return res.status(400).json({ success: false, message: 'ข้อมูล SSO ไม่ครบถ้วน' });
+    }
+
+    const ssoSecret = process.env.SSO_SECRET || 'warelio_kpi_portal_secret_2026';
+    const expectedToken = crypto
+      .createHmac('sha256', ssoSecret)
+      .update(`${sso_user}:${ts}`)
+      .digest('hex')
+      .toLowerCase();
+
+    if (token.toLowerCase() !== expectedToken) {
+      return res.status(401).json({ success: false, message: 'SSO Token ไม่ถูกต้อง' });
+    }
+
+    const userRes = await pool.query(`
+      SELECT 
+        u.*,
+        e.team,
+        e.grp,
+        COALESCE(e.team, e.grp, '-') as dept,
+        TRIM(REGEXP_REPLACE(e.position_name, '\\s+', ' ', 'g')) as position_name
+      FROM ${USERS_TABLE} u
+      LEFT JOIN employee_whc e ON u.username = e.id_emp
+      WHERE u.username = $1;
+    `, [String(sso_user).trim()]);
+
+    if (userRes.rows.length === 0) {
+      return res.status(401).json({ success: false, message: 'ไม่พบบัญชีผู้ใช้งานนี้ในระบบ' });
+    }
+
+    const user = userRes.rows[0];
+    const allowedRoles = ['Admin', 'Supervisor', 'Manager', 'Leader', 'Executive'];
+    const isSupervisor = allowedRoles.includes(user.role);
+
+    res.json({
+      success: true,
+      is_supervisor: isSupervisor,
+      message: isSupervisor ? 'เข้าสู่ระบบ SSO สำเร็จ' : 'บัญชีระดับพนักงาน',
+      user: {
+        id: user.id,
+        username: user.username,
+        fullname: user.fullname,
+        role: user.role,
+        team: user.team || null,
+        grp: user.grp || null,
+        dept: user.dept || null,
+        position_name: user.position_name || null
+      }
+    });
+  } catch (err) {
+    console.error('SSO Login error:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -420,7 +493,7 @@ app.delete('/api/kpi/presets/:id', async (req, res) => {
 // ==============================================================================
 app.post('/api/kpi/adjust', upload.single('evidence_photo'), async (req, res) => {
   try {
-    const { period_id, em_code, point_type, points, reason_code, reason_description, created_by } = req.body;
+    const { period_id, em_code, point_type, points, reason_code, reason_description, created_by, transaction_date } = req.body;
     let attachment_url = null;
     if (req.file) {
       try {
@@ -495,7 +568,8 @@ app.post('/api/kpi/adjust', upload.single('evidence_photo'), async (req, res) =>
       reason_code,
       reason_description,
       attachment_url,
-      created_by
+      created_by,
+      transaction_date
     });
 
     res.json({

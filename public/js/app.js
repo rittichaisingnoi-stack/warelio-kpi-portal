@@ -20,11 +20,73 @@ function loadAllDashboardData() {
 }
 
 // --- Supervisor Authentication & Context (Desktop) ---
-function initDesktopUser() {
-  // ล้างสถานะเดิมเพื่อให้ทุกครั้งที่เข้าหน้าเว็บหลักต้องล็อกอินก่อนเสมอ
+async function initDesktopUser() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const ssoUser = urlParams.get('sso_user');
+  const ssoTs = urlParams.get('ts');
+  const ssoToken = urlParams.get('token');
+  const hostname = window.location.hostname;
+  const isLocalIntranet = (hostname === '10.5.3.242' || hostname === 'localhost' || hostname === '127.0.0.1');
+
+  // 1) เฉพาะบนระบบภายใน (http://10.5.3.242:8882) หากคลิกมาจากแท็บเมนู Evaluation score (Main Menu จาก http://10.5.3.242:8888) ให้ดึง User ตาม Main Menu ทันที
+  if (isLocalIntranet && ssoUser && ssoTs && ssoToken) {
+    try {
+      const res = await fetch('/api/auth/sso', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sso_user: ssoUser, ts: ssoTs, token: ssoToken })
+      });
+      const json = await res.json();
+      if (json.success && json.user) {
+        if (json.is_supervisor) {
+          desktopCurrentUser = json.user;
+          localStorage.setItem('warelio_supervisor_user', JSON.stringify(desktopCurrentUser));
+          renderDesktopUserHeader();
+          closeLoginModal();
+          loadAllDashboardData();
+          updateModalSupervisorBar();
+          onAdjustEmpSelected();
+          return;
+        } else {
+          // หากเป็นพนักงานทั่วไป (Staff / User) ให้พาไปหน้าดูคะแนนของตัวเองพร้อมรหัสพนักงาน
+          localStorage.setItem('warelio_emp_id', json.user.username);
+          window.location.href = `/mobile.html?sso_user=${encodeURIComponent(ssoUser)}&ts=${encodeURIComponent(ssoTs)}&token=${encodeURIComponent(ssoToken)}`;
+          return;
+        }
+      }
+    } catch (err) {
+      console.error('SSO auto-login error:', err);
+    }
+  }
+
+  // 2) หากเปิด http://10.5.3.242:8882 และเคยซิงก์ User จาก Main Menu ไว้แล้ว ให้ใช้ User นั้นต่อได้โดยไม่ต้องล็อกอินซ้ำ
+  if (isLocalIntranet) {
+    const savedUser = localStorage.getItem('warelio_supervisor_user');
+    if (savedUser) {
+      try {
+        desktopCurrentUser = JSON.parse(savedUser);
+        if (desktopCurrentUser && desktopCurrentUser.username) {
+          renderDesktopUserHeader();
+          closeLoginModal();
+          loadAllDashboardData();
+          updateModalSupervisorBar();
+          onAdjustEmpSelected();
+          return;
+        }
+      } catch (e) {
+        desktopCurrentUser = null;
+      }
+    }
+  }
+
+  // 3) ส่วน Web ภายนอก (Cloud / Render) หรือยังไม่มี User ในระบบ ต้อง Log in ทุกครั้ง
   desktopCurrentUser = null;
   localStorage.removeItem('warelio_supervisor_user');
   renderDesktopUserHeader();
+  if (isLocalIntranet && ssoUser) {
+    const userInp = document.getElementById('desktopLoginUsername');
+    if (userInp) userInp.value = ssoUser;
+  }
   openLoginModal();
 }
 
@@ -33,22 +95,22 @@ function renderDesktopUserHeader() {
   if (!container) return;
 
   if (desktopCurrentUser) {
-    const deptStr = desktopCurrentUser.dept || desktopCurrentUser.grp ? ` • แผนก ${desktopCurrentUser.dept || desktopCurrentUser.grp}` : '';
+    const deptStr = desktopCurrentUser.dept || desktopCurrentUser.grp ? ` • ${desktopCurrentUser.dept || desktopCurrentUser.grp}` : '';
     container.innerHTML = `
-      <div style="display: flex; align-items: center; gap: 8px; background: #EEF2FF; border: 1.5px solid #C7D2FE; padding: 5px 12px; border-radius: 20px; font-size: 13px;">
-        <i class="fa-solid fa-circle-user" style="color: #4F46E5; font-size: 16px;"></i>
+      <div style="display: flex; align-items: center; gap: 8px; background: #F8FAFC; border: 1px solid #CBD5E1; padding: 5px 10px; border-radius: 6px; font-size: 12.5px;">
+        <i class="fa-solid fa-user-check" style="color: #2563EB; font-size: 13px;"></i>
         <div>
-          <strong style="color: #3730A3;">${desktopCurrentUser.fullname || desktopCurrentUser.username}</strong>
-          <span style="font-size: 11px; color: #4338CA; margin-left: 4px;">(${desktopCurrentUser.role}${deptStr})</span>
+          <strong style="color: #0F172A;">${desktopCurrentUser.fullname || desktopCurrentUser.username}</strong>
+          <span style="font-size: 11.5px; color: #64748B; margin-left: 4px;">(${desktopCurrentUser.role}${deptStr})</span>
         </div>
-        <button onclick="handleDesktopLogout()" title="ออกจากระบบ" style="border: none; background: none; color: #EF4444; cursor: pointer; padding: 2px 4px; font-size: 13px; margin-left: 4px;">
-          <i class="fa-solid fa-arrow-right-from-bracket"></i>
+        <button onclick="handleDesktopLogout()" title="ออกจากระบบ" style="border: none; background: none; color: #64748B; cursor: pointer; padding: 2px 4px; font-size: 12.5px; margin-left: 2px;" onmouseover="this.style.color='#DC2626'" onmouseout="this.style.color='#64748B'">
+          <i class="fa-solid fa-right-from-bracket"></i>
         </button>
       </div>
     `;
   } else {
     container.innerHTML = `
-      <button class="btn btn-outline" onclick="openLoginModal()" style="border: 1.5px solid #4F46E5; color: #4F46E5; background: #EEF2FF; font-weight: 600; padding: 6px 14px; border-radius: 8px; font-size: 13px; cursor: pointer;">
+      <button class="btn btn-secondary" onclick="openLoginModal()">
         <i class="fa-solid fa-right-to-bracket"></i> เข้าสู่ระบบหัวหน้างาน
       </button>
     `;
@@ -105,6 +167,10 @@ async function handleDesktopLogin(event) {
     }
 
     desktopCurrentUser = json.user;
+    const hostname = window.location.hostname;
+    if (hostname === '10.5.3.242' || hostname === 'localhost' || hostname === '127.0.0.1') {
+      localStorage.setItem('warelio_supervisor_user', JSON.stringify(desktopCurrentUser));
+    }
     renderDesktopUserHeader();
     closeLoginModal();
 
@@ -242,29 +308,33 @@ function renderLeaderboard(data) {
   tbody.innerHTML = '';
 
   if (!data || data.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="11" style="text-align: center; padding: 32px; color: #94A3B8;">ไม่พบข้อมูลพนักงานที่ตรงกับเงื่อนไขการค้นหา</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11" style="text-align: center; padding: 36px; color: #64748B;">ไม่พบข้อมูลพนักงานที่ตรงกับเงื่อนไขการค้นหา</td></tr>`;
     return;
   }
 
   data.forEach((row, index) => {
+    const rankNum = index + 1;
+    const rankClass = rankNum <= 3 ? `rank-cell rank-${rankNum}` : 'rank-cell';
+    const deductVal = parseFloat(row.total_deducted || 0);
+    const addedVal = parseFloat(row.total_added || 0);
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td style="font-weight: 700; color: #64748B;">#${index + 1}</td>
-      <td style="font-weight: 600; color: #4F46E5;">${row.em_code}</td>
-      <td style="font-weight: 600;">${row.name_th || '-'}</td>
-      <td><span class="badge" style="background: #F1F5F9; color: #475569;">${row.team || row.grp || '-'}</span></td>
-      <td style="color: #64748B;">${row.position_name || '-'}</td>
-      <td>${parseFloat(row.initial_score).toFixed(1)}</td>
-      <td style="color: #EF4444; font-weight: 600;">-${parseFloat(row.total_deducted).toFixed(1)}</td>
-      <td style="color: #10B981; font-weight: 600;">+${parseFloat(row.total_added).toFixed(1)}</td>
-      <td style="font-size: 16px; font-weight: 700; color: #0F172A;">${parseFloat(row.net_score).toFixed(1)}</td>
-      <td><span class="badge badge-grade-${row.current_grade}">เกรด ${row.current_grade}</span></td>
-      <td style="white-space: nowrap;">
-        <button class="btn btn-primary" style="padding: 5px 9px; font-size: 12px; margin-right: 4px;" onclick="viewEmpTransactions('${row.em_code}')" title="ดูประวัติการหัก/บวกคะแนน">
-          <i class="fa-solid fa-clock-rotate-left"></i> ดูประวัติ
+      <td class="text-center"><span class="${rankClass}">${rankNum}</span></td>
+      <td class="font-mono" style="font-weight: 600; color: #1E293B;">${row.em_code}</td>
+      <td style="font-weight: 600; color: #0F172A;">${row.name_th || '-'}</td>
+      <td><span class="badge badge-neutral">${row.team || row.grp || '-'}</span></td>
+      <td style="color: #475569;">${row.position_name || '-'}</td>
+      <td class="text-right" style="color: #475569;">${parseFloat(row.initial_score).toFixed(1)}</td>
+      <td class="text-right" style="color: ${deductVal > 0 ? '#DC2626' : '#94A3B8'}; font-weight: ${deductVal > 0 ? '600' : '400'};">${deductVal > 0 ? '-' : ''}${deductVal.toFixed(1)}</td>
+      <td class="text-right" style="color: ${addedVal > 0 ? '#059669' : '#94A3B8'}; font-weight: ${addedVal > 0 ? '600' : '400'};">${addedVal > 0 ? '+' : ''}${addedVal.toFixed(1)}</td>
+      <td class="text-right" style="font-size: 14px; font-weight: 700; color: #0F172A;">${parseFloat(row.net_score).toFixed(1)}</td>
+      <td class="text-center"><span class="badge badge-grade-${row.current_grade}">เกรด ${row.current_grade}</span></td>
+      <td class="text-right" style="white-space: nowrap;">
+        <button class="btn btn-sm btn-secondary" style="margin-right: 4px;" onclick="viewEmpTransactions('${row.em_code}')" title="ดูประวัติการหัก/บวกคะแนน">
+          <i class="fa-solid fa-file-lines" style="color: #2563EB;"></i> ดูประวัติ
         </button>
-        <button class="btn btn-secondary" style="padding: 5px 9px; font-size: 12px;" onclick="openAdjustForEmp('${row.em_code}', '${row.name_th}')" title="ปรับคะแนนพนักงาน">
-          <i class="fa-solid fa-pen-to-square"></i> ปรับคะแนน
+        <button class="btn btn-sm btn-secondary" onclick="openAdjustForEmp('${row.em_code}', '${row.name_th}')" title="ปรับคะแนนพนักงาน">
+          <i class="fa-solid fa-pen-to-square" style="color: #475569;"></i> ปรับคะแนน
         </button>
       </td>
     `;
@@ -297,6 +367,14 @@ async function loadEmployees() {
   }
 }
 
+function getTodayLocalISO() {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 function openAdjustModal() {
   if (!desktopCurrentUser) {
     openLoginModal();
@@ -320,6 +398,12 @@ function openAdjustModal() {
   if (btnClear) btnClear.style.display = 'none';
   const badge = document.getElementById('selectedEmpBadge');
   if (badge) badge.style.display = 'none';
+
+  // Default transaction date = today
+  const dateInput = document.getElementById('adjustDate');
+  if (dateInput) {
+    dateInput.value = getTodayLocalISO();
+  }
 
   updateReasonDropdown();
   document.getElementById('adjustModal').classList.add('active');
@@ -582,11 +666,12 @@ async function submitAdjustment(event) {
   event.preventDefault();
   const emCode = document.getElementById('adjustEmpSelect').value;
   const reasonCode = document.getElementById('adjustReasonSelect').value;
+  const transactionDate = document.getElementById('adjustDate')?.value || getTodayLocalISO();
   const points = document.getElementById('adjustPoints').value;
   const description = document.getElementById('adjustDescription').value;
   const photoInput = document.getElementById('adjustPhoto');
 
-  if (!emCode || !reasonCode || !points) {
+  if (!emCode || !reasonCode || !points || !transactionDate) {
     alert('กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน');
     return;
   }
@@ -621,6 +706,7 @@ async function submitAdjustment(event) {
   formData.append('points', points);
   formData.append('reason_code', reasonCode);
   formData.append('reason_description', description);
+  formData.append('transaction_date', transactionDate);
   formData.append('created_by', desktopCurrentUser.username);
 
   if (photoInput.files.length > 0) {
@@ -638,14 +724,23 @@ async function submitAdjustment(event) {
     });
     const json = await res.json();
     btn.disabled = false;
+    selectPointType(currentPointType);
 
     if (!json.success) throw new Error(json.message);
 
     alert('บันทึกการปรับคะแนนเรียบร้อยแล้ว!');
     closeAdjustModal();
     document.getElementById('adjustForm').reset();
+    const dateInput = document.getElementById('adjustDate');
+    if (dateInput) dateInput.value = getTodayLocalISO();
     loadSummaryData();
+    if (selectedTxEmp && selectedTxEmp.em_code === emCode) {
+      loadEmployeeTransactions(emCode);
+    }
   } catch (err) {
+    const btn = document.getElementById('btnSubmitAdjust');
+    if (btn) btn.disabled = false;
+    selectPointType(currentPointType);
     alert('เกิดข้อผิดพลาด: ' + err.message);
   }
 }
@@ -719,8 +814,8 @@ function populatePolicyPosDropdown(selectedDept = 'GLOBAL', targetPos = 'ALL') {
   const allOpt = document.createElement('option');
   allOpt.value = 'ALL';
   allOpt.innerText = (selectedDept === 'GLOBAL') 
-    ? '👥 ทุกตำแหน่ง (All Positions - ค่าเริ่มต้นกลาง)' 
-    : `👥 ทุกตำแหน่งในแผนก ${selectedDept} (All Positions)`;
+    ? 'ทุกตำแหน่ง (All Positions - ค่าเริ่มต้นกลาง)' 
+    : `ทุกตำแหน่งในแผนก ${selectedDept} (All Positions)`;
   posSelect.appendChild(allOpt);
 
   // 2. Filter positions for selected department
@@ -737,7 +832,7 @@ function populatePolicyPosDropdown(selectedDept = 'GLOBAL', targetPos = 'ALL') {
   positionsToShow.forEach(pos => {
     const opt = document.createElement('option');
     opt.value = pos;
-    opt.innerText = `👔 ตำแหน่ง: ${pos}`;
+    opt.innerText = `ตำแหน่ง: ${pos}`;
     posSelect.appendChild(opt);
   });
 
@@ -762,36 +857,36 @@ async function loadPolicies() {
       const tr = document.createElement('tr');
 
       tr.innerHTML = `
-        <td style="font-weight: 700;">
-          ${isGlobal ? '<span class="badge" style="background:#EEF2FF; color:#4F46E5;">เกณฑ์มาตรฐานกลาง (Global)</span>' : p.dept_code}
+        <td style="font-weight: 600;">
+          ${isGlobal ? '<span class="badge badge-grade-B">เกณฑ์มาตรฐานกลาง (Global)</span>' : `<span style="color:#0F172A;">${p.dept_code}</span>`}
         </td>
         <td>
           ${hasSpecificPos 
-            ? `<span class="badge" style="background:#E0F2FE; color:#0369A1; font-weight:600;"><i class="fa-solid fa-id-badge"></i> ${p.position_name}</span>` 
-            : '<span style="color:#64748B; font-size:12px;">👥 ทุกตำแหน่งในแผนก</span>'}
+            ? `<span class="badge badge-neutral">${p.position_name}</span>` 
+            : '<span style="color:#64748B; font-size:12.5px;">ทุกตำแหน่งในแผนก</span>'}
         </td>
         <td>${p.late_penalty_type === 'TIER' ? 'ขั้นบันไดตามนาที' : `คงที่ (-${p.late_fixed_points} แต้ม)`}</td>
-        <td style="color:#EF4444; font-weight:600;">-${p.absent_penalty_points} แต้ม</td>
-        <td style="color:#EF4444;">-${p.sick_leave_points !== undefined && p.sick_leave_points !== null && Number(p.sick_leave_points) > 0 ? p.sick_leave_points : p.unannounced_leave_points} แต้ม</td>
+        <td class="text-right" style="color:#DC2626; font-weight:600;">-${p.absent_penalty_points} แต้ม</td>
+        <td class="text-right" style="color:#DC2626;">-${p.sick_leave_points !== undefined && p.sick_leave_points !== null && Number(p.sick_leave_points) > 0 ? p.sick_leave_points : p.unannounced_leave_points} แต้ม</td>
         <td>
-          <div style="color:#10B981; font-weight:700;">+${p.weekly_holiday_bonus} แต้ม/วัน</div>
-          <div style="font-size:11px; color:#4F46E5; background:#EEF2FF; padding:2px 6px; border-radius:4px; display:inline-block; margin-top:2px;">
-            <i class="fa-solid fa-calendar-day"></i> หยุด: ${formatDayOffNames(p.weekly_off_days)}
+          <div style="color:#059669; font-weight:600;">+${p.weekly_holiday_bonus} แต้ม/วัน</div>
+          <div style="font-size:11px; color:#475569; background:#F1F5F9; padding:1px 6px; border-radius:4px; display:inline-block; margin-top:2px;">
+            วันหยุด: ${formatDayOffNames(p.weekly_off_days)}
           </div>
         </td>
-        <td style="color:#10B981; font-weight:600;">+${p.public_holiday_bonus} แต้ม/วัน</td>
+        <td class="text-right" style="color:#059669; font-weight:600;">+${p.public_holiday_bonus} แต้ม/วัน</td>
         <td>
           <span style="font-size:12px; color:#64748B;">
             ${(p.late_tiers || []).map(t => `${t.min_minutes}-${t.max_minutes || '∞'}m: -${t.deduct_points}`).join(', ') || '-'}
           </span>
         </td>
-        <td>
-          <div style="display: flex; gap: 6px;">
-            <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px;" onclick="openPolicyModal('${p.dept_code}', '${(p.position_name || 'ALL').replace(/'/g, "\\'")}')">
+        <td class="text-right">
+          <div style="display: inline-flex; gap: 6px;">
+            <button class="btn btn-sm btn-secondary" onclick="openPolicyModal('${p.dept_code}', '${(p.position_name || 'ALL').replace(/'/g, "\\'")}')">
               <i class="fa-solid fa-pen-to-square"></i> แก้ไข
             </button>
             ${!isGlobal ? `
-              <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; color:#EF4444;" onclick="deletePolicy(${p.policy_id}, '${p.dept_code} - ${p.position_name}')" title="ลบเกณฑ์เฉพาะนี้">
+              <button class="btn btn-sm btn-secondary" style="color:#DC2626;" onclick="deletePolicy(${p.policy_id}, '${p.dept_code} - ${p.position_name}')" title="ลบเกณฑ์เฉพาะนี้">
                 <i class="fa-solid fa-trash-can"></i>
               </button>
             ` : ''}
@@ -824,7 +919,7 @@ function populatePolicyDeptDropdown(selectedDept = 'GLOBAL') {
   if (!deptSelect) return;
 
   const currentVal = selectedDept || deptSelect.value || 'GLOBAL';
-  deptSelect.innerHTML = '<option value="GLOBAL">🌐 เกณฑ์มาตรฐานกลาง (Global Default - ใช้กับทุกแผนก)</option>';
+  deptSelect.innerHTML = '<option value="GLOBAL">เกณฑ์มาตรฐานกลาง (Global Default - ใช้กับทุกแผนก)</option>';
 
   const deptSet = new Set();
   loadedPositions.forEach(p => {
@@ -845,7 +940,7 @@ function populatePolicyDeptDropdown(selectedDept = 'GLOBAL') {
   Array.from(deptSet).sort().forEach(d => {
     const o = document.createElement('option');
     o.value = d;
-    o.innerText = `🏢 แผนก / ทีม: ${d}`;
+    o.innerText = `แผนก / ทีม: ${d}`;
     deptSelect.appendChild(o);
   });
 
@@ -1032,27 +1127,27 @@ async function loadPeriods() {
       const endTh = new Date(p.end_date).toLocaleDateString('th-TH');
 
       tr.innerHTML = `
-        <td style="font-weight: 700; color: #64748B;">#${p.period_id}</td>
-        <td style="font-weight: 700; font-size: 14px; color: #1E293B;">${p.period_name}</td>
+        <td class="font-mono" style="font-weight: 600; color: #64748B;">#${p.period_id}</td>
+        <td style="font-weight: 600; color: #0F172A;">${p.period_name}</td>
         <td>${startTh}</td>
         <td>${endTh}</td>
-        <td style="font-weight: 600;">${p.initial_score} คะแนน</td>
-        <td>
+        <td class="text-right" style="font-weight: 600;">${p.initial_score} คะแนน</td>
+        <td class="text-center">
           ${p.is_active 
-            ? '<span class="badge badge-grade-A" style="font-size: 12px;"><i class="fa-solid fa-circle-check"></i> รอบปัจจุบัน (Active)</span>' 
-            : '<span class="badge badge-grade-D" style="font-size: 12px;">ปิดรอบแล้ว</span>'}
+            ? '<span class="badge badge-grade-A"><i class="fa-solid fa-circle-check"></i> รอบปัจจุบัน (Active)</span>' 
+            : '<span class="badge badge-neutral">ปิดรอบแล้ว</span>'}
         </td>
-        <td>
-          <div style="display: flex; gap: 6px;">
-            <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px; color: #4F46E5;" onclick="openEditPeriodModal(${p.period_id})" title="แก้ไขรอบนี้">
+        <td class="text-right">
+          <div style="display: inline-flex; gap: 6px;">
+            <button class="btn btn-sm btn-secondary" onclick="openEditPeriodModal(${p.period_id})" title="แก้ไขรอบนี้">
               <i class="fa-solid fa-pen-to-square"></i> แก้ไข
             </button>
             ${!p.is_active ? `
-              <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px; color: #059669;" onclick="activatePeriod(${p.period_id}, '${p.period_name.replace(/'/g, "\\'")}')" title="เปิดใช้งานรอบนี้เป็นรอบปัจจุบัน">
+              <button class="btn btn-sm btn-secondary" style="color: #059669;" onclick="activatePeriod(${p.period_id}, '${p.period_name.replace(/'/g, "\\'")}')" title="เปิดใช้งานรอบนี้เป็นรอบปัจจุบัน">
                 <i class="fa-solid fa-play"></i> เปิดใช้
               </button>
             ` : ''}
-            <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px; color: #EF4444;" onclick="deletePeriod(${p.period_id}, '${p.period_name.replace(/'/g, "\\'")}', ${p.is_active})" title="ลบรอบนี้">
+            <button class="btn btn-sm btn-secondary" style="color: #DC2626;" onclick="deletePeriod(${p.period_id}, '${p.period_name.replace(/'/g, "\\'")}', ${p.is_active})" title="ลบรอบนี้">
               <i class="fa-solid fa-trash-can"></i> ลบ
             </button>
           </div>
@@ -1216,15 +1311,15 @@ function renderPresetsTable(presets) {
           ${isAdd ? '+ คะแนนบวก' : '- คะแนนลบ'}
         </span>
       </td>
-      <td style="font-family: monospace; font-weight: 600;">${p.reason_code}</td>
+      <td class="font-mono" style="font-weight: 600;">${p.reason_code}</td>
       <td style="font-weight: 600;">${p.reason_name}</td>
-      <td style="font-weight: 700; color: ${isAdd ? '#10B981' : '#EF4444'};">
+      <td class="text-right" style="font-weight: 700; color: ${isAdd ? '#059669' : '#DC2626'};">
         ${isAdd ? '+' : ''}${parseFloat(p.default_points).toFixed(1)} แต้ม
       </td>
-      <td><span class="badge" style="background:#F1F5F9; color:#475569;">${p.dept_scope}</span></td>
-      <td><span class="badge badge-grade-A">เปิดใช้งาน</span></td>
-      <td>
-        <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px; color: #EF4444;" onclick="deletePreset(${p.reason_id}, '${(p.reason_name || '').replace(/'/g, "\\'")}', '${p.reason_code}')" title="ลบตัวเลือกเหตุผลนี้">
+      <td><span class="badge badge-neutral">${p.dept_scope}</span></td>
+      <td class="text-center"><span class="badge badge-grade-A">เปิดใช้งาน</span></td>
+      <td class="text-right">
+        <button class="btn btn-sm btn-secondary" style="color: #DC2626;" onclick="deletePreset(${p.reason_id}, '${(p.reason_name || '').replace(/'/g, "\\'")}', '${p.reason_code}')" title="ลบตัวเลือกเหตุผลนี้">
           <i class="fa-solid fa-trash-can"></i> ลบ
         </button>
       </td>
@@ -1514,17 +1609,17 @@ async function loadHolidays() {
       const yearDisplay = h.holiday_year || d.getFullYear();
 
       tr.innerHTML = `
-        <td style="font-weight: 700; color: #475569;">
-          <span class="badge" style="background:#F1F5F9; color:#334155;">${yearDisplay}</span>
-        </td>
-        <td style="font-weight: 700; color: #4F46E5;">
-          <i class="fa-regular fa-calendar-days" style="margin-right: 6px;"></i> ${dateTh}
-        </td>
-        <td style="font-weight: 600; font-size: 14px;">${h.holiday_name}</td>
-        <td style="color: #10B981; font-weight: 700;">${bonusFormatted} ${scopeLabel}</td>
-        <td style="color: #64748B; font-size: 13px;">${h.description || '-'}</td>
         <td>
-          <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px; color: #EF4444;" onclick="deleteHoliday(${h.holiday_id}, '${h.holiday_name.replace(/'/g, "\\'")}')">
+          <span class="badge badge-neutral">${yearDisplay}</span>
+        </td>
+        <td style="font-weight: 600; color: #0F172A;">
+          <i class="fa-regular fa-calendar-days" style="margin-right: 6px; color: #64748B;"></i> ${dateTh}
+        </td>
+        <td style="font-weight: 600;">${h.holiday_name}</td>
+        <td style="color: #059669; font-weight: 600;">${bonusFormatted} ${scopeLabel}</td>
+        <td style="color: #64748B; font-size: 12.5px;">${h.description || '-'}</td>
+        <td class="text-right">
+          <button class="btn btn-sm btn-secondary" style="color: #DC2626;" onclick="deleteHoliday(${h.holiday_id}, '${h.holiday_name.replace(/'/g, "\\'")}')">
             <i class="fa-solid fa-trash-can"></i> ลบ
           </button>
         </td>
@@ -1753,42 +1848,42 @@ function renderStationCards() {
   container.innerHTML = allStationConfigs.map(s => {
     const pts = parseFloat(s.bonus_points).toFixed(1);
     const isMonthly = s.bonus_frequency === 'MONTHLY';
-    const freqLabel = isMonthly ? 'รอบทุกเดือน (Monthly Cycle)' : 'ต่อรอบประเมิน (Per Period)';
+    const freqLabel = isMonthly ? 'รอบทุกเดือน (Monthly)' : 'ต่อรอบประเมิน (Per Period)';
     const ptsText = isMonthly ? `+${pts} แต้ม / เดือน` : `+${pts} แต้ม / รอบ`;
     const statusBadge = s.is_active 
-      ? '<span class="badge" style="background: #D1FAE5; color: #065F46;"><i class="fa-solid fa-circle-check"></i> เปิดใช้งาน</span>'
-      : '<span class="badge" style="background: #FEE2E2; color: #991B1B;"><i class="fa-solid fa-circle-xmark"></i> ปิดใช้งาน</span>';
+      ? '<span class="badge badge-grade-A">เปิดใช้งาน</span>'
+      : '<span class="badge badge-grade-D">ปิดใช้งาน</span>';
 
     return `
-      <div class="card" style="margin-bottom: 0; padding: 18px 20px; border-left: 5px solid #4F46E5; display: flex; flex-direction: column; justify-content: space-between;">
+      <div class="card" style="padding: 16px 18px; border-left: 3px solid #2563EB; display: flex; flex-direction: column; justify-content: space-between;">
         <div>
           <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
             <div>
-              <span style="font-size: 11px; font-weight: 700; color: #6366F1; text-transform: uppercase;">${s.station_code}</span>
-              <h4 style="font-size: 16px; font-weight: 700; color: #1E293B; margin: 4px 0 0 0;">${s.station_name}</h4>
+              <span class="font-mono" style="font-size: 11px; font-weight: 600; color: #64748B; text-transform: uppercase;">${s.station_code}</span>
+              <h4 style="font-size: 14.5px; font-weight: 700; color: #0F172A; margin: 2px 0 0 0;">${s.station_name}</h4>
             </div>
             ${statusBadge}
           </div>
-          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; margin: 12px 0;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-              <span style="font-size: 12.5px; color: #64748B;">แต้มบวกอัตโนมัติ:</span>
-              <strong style="font-size: 16px; color: #059669;">${ptsText}</strong>
+          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 12px; margin: 10px 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
+              <span style="font-size: 12px; color: #64748B;">แต้มบวกอัตโนมัติ:</span>
+              <strong style="font-size: 14px; color: #059669;">${ptsText}</strong>
             </div>
-            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #64748B;">
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; color: #64748B;">
               <span>ความถี่:</span>
-              <span style="font-weight: 600; color: #4338CA;">${freqLabel}</span>
+              <span style="font-weight: 600; color: #334155;">${freqLabel}</span>
             </div>
           </div>
         </div>
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding-top: 10px; border-top: 1px dashed #E2E8F0;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; padding-top: 10px; border-top: 1px solid #F1F5F9;">
           <span style="font-size: 12px; color: #64748B;">
-            <i class="fa-solid fa-users" style="color: #4F46E5;"></i> ประจำอยู่: <b>${s.assigned_count || 0}</b> คน
+            พนักงานประจำจุด: <strong style="color: #0F172A;">${s.assigned_count || 0}</strong> คน
           </span>
           <div style="display: flex; gap: 6px;">
-            <button class="btn btn-sm btn-secondary" onclick="openEditStationModal('${s.station_code}')" title="แก้ไขการตั้งค่า" style="padding: 4px 10px; font-size: 12px;">
+            <button class="btn btn-sm btn-secondary" onclick="openEditStationModal('${s.station_code}')" title="แก้ไขการตั้งค่า">
               <i class="fa-solid fa-pen-to-square"></i> แก้ไข
             </button>
-            <button class="btn btn-sm btn-danger" onclick="deleteStationConfig('${s.station_code}')" title="ลบจุดนี้" style="padding: 4px 8px; font-size: 12px;">
+            <button class="btn btn-sm btn-secondary" style="color: #DC2626;" onclick="deleteStationConfig('${s.station_code}')" title="ลบจุดนี้">
               <i class="fa-solid fa-trash-can"></i>
             </button>
           </div>
@@ -1865,28 +1960,24 @@ function renderStationAssignmentsTable(list) {
 
     return `
       <tr>
-        <td style="font-weight: 700; color: #1E293B;">${a.em_code}</td>
+        <td class="font-mono" style="font-weight: 600; color: #1E293B;">${a.em_code}</td>
         <td style="font-weight: 600;">${a.name_th}</td>
         <td>
-          <span class="badge" style="background: #F1F5F9; color: #334155; font-size: 12px;">${a.dept || '-'}</span>
+          <span class="badge badge-neutral">${a.dept || '-'}</span>
           <div style="font-size: 11px; color: #64748B; margin-top: 2px;">${a.position_name || '-'}</div>
         </td>
         <td>
-          <span class="badge" style="background: #EEF2FF; color: #3730A3; font-weight: 700; font-size: 12.5px;">
-            <i class="fa-solid fa-award" style="color: #6366F1;"></i> ${a.station_name}
-          </span>
+          <span class="badge badge-grade-B">${a.station_name}</span>
         </td>
         <td>${cycleBadge}</td>
-        <td style="color: #059669; font-weight: 700; font-size: 13.5px;">+${pts} แต้ม/ด.</td>
-        <td>
-          <strong style="color: #047857; font-size: 14px; background: #D1FAE5; padding: 4px 10px; border-radius: 6px; display: inline-block;">
-            +${totalPts.toFixed(1)} แต้ม
-          </strong>
+        <td class="text-right" style="color: #059669; font-weight: 600;">+${pts} แต้ม/ด.</td>
+        <td class="text-right">
+          <strong style="color: #047857; font-size: 13.5px;">+${totalPts.toFixed(1)} แต้ม</strong>
         </td>
         <td style="font-size: 12px; color: #64748B;">${assigner}</td>
         <td style="font-size: 12px; color: #64748B; max-width: 180px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${remark}">${remark}</td>
-        <td style="text-align: center;">
-          <button class="btn btn-sm btn-danger" onclick="deleteStationAssignment(${a.assignment_id}, '${a.name_th}', '${a.station_name}')" title="ยกเลิกการประจำจุดนี้" style="padding: 4px 10px; font-size: 12px;">
+        <td class="text-right">
+          <button class="btn btn-sm btn-secondary" style="color: #DC2626;" onclick="deleteStationAssignment(${a.assignment_id}, '${a.name_th}', '${a.station_name}')" title="ยกเลิกการประจำจุดนี้">
             <i class="fa-solid fa-user-minus"></i> ยกเลิก
           </button>
         </td>
@@ -2368,13 +2459,13 @@ function updateTxFilterButtons() {
     if (!btn) return;
     if (k === currentTxFilter) {
       btn.style.background = '#FFFFFF';
-      btn.style.color = '#4F46E5';
-      btn.style.fontWeight = '700';
-      btn.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)';
+      btn.style.color = '#0F172A';
+      btn.style.fontWeight = '600';
+      btn.style.boxShadow = '0 1px 2px rgba(15,23,42,0.06)';
     } else {
       btn.style.background = 'transparent';
       btn.style.color = '#64748B';
-      btn.style.fontWeight = '600';
+      btn.style.fontWeight = '500';
       btn.style.boxShadow = 'none';
     }
   });
@@ -2391,8 +2482,7 @@ function renderTransactionsTable(list) {
   if (!list || list.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="8" style="text-align: center; padding: 40px; color: #94A3B8;">
-          <i class="fa-solid fa-folder-open" style="font-size: 28px; margin-bottom: 8px; display: block; color: #CBD5E1;"></i>
+        <td colspan="8" style="text-align: center; padding: 36px; color: #64748B;">
           ไม่พบรายการประวัติคะแนนตามเงื่อนไขที่เลือก
         </td>
       </tr>
@@ -2422,49 +2512,43 @@ function renderTransactionsTable(list) {
 
     // Type Badge
     const typeBadge = isAuto
-      ? `<span class="badge" style="background: #EEF2FF; color: #4F46E5; font-weight: 700; border: 1px solid #C7D2FE;"><i class="fa-solid fa-robot"></i> Auto ระบบ</span>`
-      : `<span class="badge" style="background: #FEF3C7; color: #B45309; font-weight: 700; border: 1px solid #FDE68A;"><i class="fa-solid fa-user-check"></i> Manual หัวหน้า</span>`;
+      ? `<span class="badge badge-grade-B">ระบบอัตโนมัติ</span>`
+      : `<span class="badge badge-grade-C">หัวหน้างานบันทึก</span>`;
 
     // Points style
     const pointsHtml = isNegative
-      ? `<span style="color: #EF4444; font-weight: 800; font-size: 15px;">${pts.toFixed(2)} แต้ม</span>`
-      : `<span style="color: #10B981; font-weight: 800; font-size: 15px;">+${pts.toFixed(2)} แต้ม</span>`;
+      ? `<span style="color: #DC2626; font-weight: 700; font-size: 13.5px;">${pts.toFixed(2)} แต้ม</span>`
+      : `<span style="color: #059669; font-weight: 700; font-size: 13.5px;">+${pts.toFixed(2)} แต้ม</span>`;
 
-    // Reason highlight: If reason starts with "ลาป่วย", "ขาด", etc.
+    // Reason highlight
     let reasonHtml = t.reason_description || '-';
     if (reasonHtml.includes('ลาป่วย')) {
-      reasonHtml = `<span style="color: #DC2626; font-weight: 600;"><i class="fa-solid fa-head-side-cough"></i> ${reasonHtml}</span>`;
+      reasonHtml = `<span style="color: #DC2626; font-weight: 500;">${reasonHtml}</span>`;
     } else if (reasonHtml.includes('ขาดงาน') || reasonHtml.includes('ขาด')) {
-      reasonHtml = `<span style="color: #991B1B; font-weight: 600;"><i class="fa-solid fa-user-xmark"></i> ${reasonHtml}</span>`;
+      reasonHtml = `<span style="color: #991B1B; font-weight: 600;">${reasonHtml}</span>`;
     } else if (reasonHtml.includes('สาย')) {
-      reasonHtml = `<span style="color: #D97706; font-weight: 600;"><i class="fa-solid fa-business-time"></i> ${reasonHtml}</span>`;
+      reasonHtml = `<span style="color: #B45309; font-weight: 500;">${reasonHtml}</span>`;
     }
 
     // Attachment
     let attachHtml = '<span style="color: #CBD5E1;">-</span>';
     if (t.attachment_url) {
       attachHtml = `
-        <button type="button" class="btn btn-sm btn-secondary" onclick="openTxPhotoModal('${t.attachment_url}')" style="padding: 2px 8px; font-size: 11px;" title="คลิกดูรูปหลักฐาน">
-          <i class="fa-solid fa-image" style="color: #4F46E5;"></i> รูป
+        <button type="button" class="btn btn-sm btn-secondary" onclick="openTxPhotoModal('${t.attachment_url}')" title="คลิกดูรูปหลักฐาน">
+          <i class="fa-regular fa-image" style="color: #2563EB;"></i> ดูรูป
         </button>
       `;
     }
 
     tr.innerHTML = `
-      <td style="color: #94A3B8; font-weight: 600;">#${i + 1}</td>
-      <td style="font-weight: 700; color: #1E293B; white-space: nowrap;">
-        <i class="fa-regular fa-calendar" style="color: #64748B; margin-right: 4px;"></i> ${dateStr}
-      </td>
+      <td class="text-center font-mono" style="color: #64748B;">${i + 1}</td>
+      <td style="font-weight: 600; color: #0F172A; white-space: nowrap;">${dateStr}</td>
       <td>${typeBadge}</td>
-      <td style="font-size: 14px;">${reasonHtml}</td>
-      <td style="text-align: right; white-space: nowrap;">${pointsHtml}</td>
-      <td style="font-size: 12px; color: #64748B;">
-        <span class="badge" style="background: #F8FAFC; color: #475569; border: 1px solid #E2E8F0;">
-          ${t.created_by || 'SYSTEM'}
-        </span>
-      </td>
-      <td style="text-align: center;">${attachHtml}</td>
-      <td style="font-size: 12px; color: #94A3B8; white-space: nowrap;">${createdTimeStr}</td>
+      <td>${reasonHtml}</td>
+      <td class="text-right" style="white-space: nowrap;">${pointsHtml}</td>
+      <td><span class="badge badge-neutral">${t.created_by || 'SYSTEM'}</span></td>
+      <td class="text-center">${attachHtml}</td>
+      <td style="font-size: 12px; color: #64748B; white-space: nowrap;">${createdTimeStr}</td>
     `;
     tbody.appendChild(tr);
   });
