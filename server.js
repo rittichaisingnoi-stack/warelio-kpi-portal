@@ -1326,25 +1326,29 @@ app.get('/api/kpi/station-roster', async (req, res) => {
       ORDER BY dept_name ASC;
     `);
 
-    // ดึงรายชื่อพนักงานในทีม/แผนกที่เลือก
-    const empParams = [];
-    let empWhere = `WHERE e.id_emp IS NOT NULL`;
+    // ดึงเฉพาะพนักงานที่มีการกำหนดจุดจ่ายงานในเดือนนี้ (หรือรอบประจำทุกเดือน 'ALL')
+    // ไม่ดึงพนักงานทั้งหมดใน employee_whc มาค้างในตาราง (จะแสดงเฉพาะคนที่ถูกกำหนดจุดจ่ายแล้ว)
+    const empParams = [period.period_id, selectedMonth];
+    let deptFilterSql = '';
     if (effectiveDept && effectiveDept !== 'ALL') {
       empParams.push(effectiveDept);
-      empWhere += ` AND COALESCE(e.team, e.grp, '-') = $${empParams.length}`;
+      deptFilterSql = ` AND COALESCE(e.team, e.grp, '-') = $${empParams.length}`;
     }
 
     const empRes = await pool.query(`
-      SELECT 
-        e.id_emp as em_code,
-        e.name_th,
+      SELECT DISTINCT
+        a.em_code,
+        COALESCE(e.name_th, a.em_code) as name_th,
         COALESCE(e.team, e.grp, '-') as dept,
         e.team,
         e.grp,
         TRIM(REGEXP_REPLACE(COALESCE(e.position_name, ''), '\\s+', ' ', 'g')) as position_name
-      FROM employee_whc e
-      ${empWhere}
-      ORDER BY COALESCE(e.team, e.grp, '-') ASC, e.id_emp ASC;
+      FROM kpi_employee_station_assignments a
+      LEFT JOIN employee_whc e ON a.em_code = e.id_emp
+      WHERE a.period_id = $1 
+        AND (a.assigned_month = $2 OR a.assigned_month = 'ALL')
+        ${deptFilterSql}
+      ORDER BY COALESCE(e.team, e.grp, '-') ASC, a.em_code ASC;
     `, empParams);
 
     // ดึงข้อมูลการประจำจุดจ่ายทั้งหมดในรอบประเมินนี้ เพื่อจับคู่เดือนที่เลือก และสรุปประวัติย้อนหลังรายคน

@@ -2181,7 +2181,14 @@ function renderStationRosterTable(list) {
   if (!tbody) return;
 
   if (!list || list.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: #94A3B8; padding: 32px;">ไม่พบรายชื่อพนักงานตามเงื่อนไขที่เลือก</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: #64748B; padding: 48px 20px;">
+      <i class="fa-solid fa-clipboard-user" style="font-size: 36px; color: #94A3B8; margin-bottom: 12px; display: block;"></i>
+      <div style="font-size: 15px; font-weight: 600; color: #334155; margin-bottom: 6px;">ยังไม่มีการกำหนดจุดจ่ายงานในเดือนนี้</div>
+      <div style="font-size: 12.5px; color: #94A3B8; margin-bottom: 16px;">ตารางจะแสดงเฉพาะพนักงานที่ถูกกำหนดจุดจ่ายงานในเดือนนี้เท่านั้น</div>
+      <button type="button" class="btn btn-primary" onclick="openAssignStationModal()" style="background: #2563EB; font-size: 12.5px;">
+        <i class="fa-solid fa-user-plus"></i> + กำหนดจุดจ่ายให้พนักงาน
+      </button>
+    </td></tr>`;
     return;
   }
 
@@ -2266,9 +2273,15 @@ function renderStationRosterTable(list) {
           <button type="button" class="btn btn-sm btn-secondary"
             onclick="openEmpStationHistoryModal('${r.em_code}')"
             title="${escapeHtmlAttr(recentHint)}"
-            style="padding: 5px 9px; font-size: 12px;">
+            style="padding: 5px 9px; font-size: 12px; margin-right: 4px;">
             <i class="fa-solid fa-clock-rotate-left" style="color: #2563EB;"></i>
             ประวัติ (${histMonths} ด.${histBonus > 0 ? ` / +${histBonus.toFixed(0)}` : ''})
+          </button>
+          <button type="button" class="btn btn-sm btn-secondary"
+            onclick="deleteStationRosterRow('${r.em_code}')"
+            title="ลบพนักงานคนนี้ออกจากตารางจุดจ่ายเดือนนี้"
+            style="padding: 5px 8px; font-size: 12px; color: #DC2626; border-color: #FECACA; background: #FEF2F2;">
+            <i class="fa-solid fa-trash"></i>
           </button>
         </td>
       </tr>
@@ -3152,4 +3165,213 @@ async function deleteStationConfig(code) {
     alert('เกิดข้อผิดพลาด: ' + err.message);
   }
 }
+
+// ------------------------------------------------------------------------------
+// การจัดการการกำหนดจุดจ่ายงานรายบุคคล (Modal Assign & Row Delete)
+// ------------------------------------------------------------------------------
+async function deleteStationRosterRow(emCode) {
+  if (!confirm(`คุณต้องการลบพนักงานรหัส ${emCode} ออกจากตารางจุดจ่ายงานในเดือนนี้ใช่หรือไม่?`)) {
+    return;
+  }
+  try {
+    const monthInput = document.getElementById('stationRosterMonth');
+    const selectedMonth = monthInput ? monthInput.value : getDefaultStationMonthStr();
+
+    const res = await fetch('/api/kpi/station-roster/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        month: selectedMonth,
+        assignments: [
+          { em_code: emCode, station_name_text: '', station_code: '' }
+        ]
+      })
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message);
+
+    delete stationRosterDirtyMap[emCode];
+    showToast(`ลบข้อมูลจุดจ่ายของรหัส ${emCode} เรียบร้อยแล้ว`, 'success');
+    await loadStationRoster();
+  } catch (err) {
+    showToast('เกิดข้อผิดพลาดในการลบ: ' + err.message, 'error');
+  }
+}
+
+let stationEmployeesCache = [];
+
+async function loadEmployeesForStationModal() {
+  if (stationEmployeesCache && stationEmployeesCache.length > 0) return stationEmployeesCache;
+  try {
+    const res = await fetch('/api/kpi/employees');
+    const json = await res.json();
+    if (json.success && Array.isArray(json.employees)) {
+      stationEmployeesCache = json.employees;
+    }
+  } catch (e) {
+    console.error('Error loading employees for station modal:', e);
+  }
+  return stationEmployeesCache;
+}
+
+async function openAssignStationModal(presetEmCode = null) {
+  const modal = document.getElementById('assignStationModal');
+  if (!modal) return;
+
+  const empSelect = document.getElementById('assignStationEmpSelect');
+  const stationSelect = document.getElementById('assignStationCodeSelect');
+  const monthSelect = document.getElementById('assignStationMonthSelect');
+  const remarkInput = document.getElementById('assignStationRemark');
+  const searchInput = document.getElementById('assignEmpSearchInput');
+
+  if (searchInput) searchInput.value = '';
+  if (remarkInput) remarkInput.value = '';
+
+  // โหลดรายชื่อพนักงาน
+  const emps = await loadEmployeesForStationModal();
+  if (empSelect) {
+    empSelect.innerHTML = '<option value="">-- เลือกรหัส / ชื่อพนักงาน --</option>' +
+      emps.map(e => `<option value="${escapeHtmlAttr(e.id_emp)}" data-name="${escapeHtmlAttr(e.name_th)}" data-dept="${escapeHtmlAttr(e.team || e.grp || '-')}">${escapeHtmlAttr(e.id_emp)} - ${escapeHtmlAttr(e.name_th)} (${escapeHtmlAttr(e.team || e.grp || '-')})</option>`).join('');
+    if (presetEmCode) {
+      empSelect.value = presetEmCode;
+    }
+  }
+
+  // โหลดตัวเลือกจุดจ่ายงานยาก
+  if (stationSelect) {
+    stationSelect.innerHTML = `
+      <option value="">-- จุดจ่ายทั่วไป (0 แต้ม) --</option>
+      ${allStationConfigs.filter(c => c.is_active !== false).map(c => `
+        <option value="${escapeHtmlAttr(c.station_code)}" data-pts="${c.bonus_points}">
+          ${escapeHtmlAttr(c.station_name)} (+${parseFloat(c.bonus_points).toFixed(1)} แต้ม)
+        </option>
+      `).join('')}
+    `;
+  }
+
+  // กำหนดตัวเลือกรอบเดือน
+  const curMonth = (document.getElementById('stationRosterMonth') && document.getElementById('stationRosterMonth').value) || getDefaultStationMonthStr();
+  if (monthSelect) {
+    monthSelect.innerHTML = `
+      <option value="${escapeHtmlAttr(curMonth)}">ประจำเดือนที่เลือก (${formatThaiMonthYearLabel(curMonth)})</option>
+      <option value="ALL">รอบประจำทุกเดือน (สะสมทุกเดือนในรอบประเมิน)</option>
+    `;
+  }
+
+  onAssignStationCodeChanged();
+  onAssignStationEmpSelected();
+  modal.classList.add('show');
+}
+
+function closeAssignStationModal() {
+  const modal = document.getElementById('assignStationModal');
+  if (modal) modal.classList.remove('show');
+}
+
+function filterAssignStationEmployees() {
+  const search = (document.getElementById('assignEmpSearchInput')?.value || '').toLowerCase().trim();
+  const select = document.getElementById('assignStationEmpSelect');
+  if (!select) return;
+
+  Array.from(select.options).forEach((opt, idx) => {
+    if (idx === 0) return;
+    const text = opt.text.toLowerCase();
+    opt.style.display = (!search || text.includes(search)) ? '' : 'none';
+  });
+}
+
+function onAssignStationEmpSelected() {
+  const select = document.getElementById('assignStationEmpSelect');
+  const badge = document.getElementById('assignEmpDeptBadge');
+  if (!select || !badge) return;
+
+  const opt = select.options[select.selectedIndex];
+  if (opt && opt.value) {
+    const dept = opt.getAttribute('data-dept') || '-';
+    badge.style.display = 'block';
+    badge.style.background = '#EFF6FF';
+    badge.style.color = '#1E40AF';
+    badge.style.border = '1px solid #BFDBFE';
+    badge.innerText = `สังกัดแผนก: ${dept}`;
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function onAssignStationCodeChanged() {
+  const select = document.getElementById('assignStationCodeSelect');
+  const preview = document.getElementById('assignStationPreviewPoints');
+  if (!select || !preview) return;
+
+  const opt = select.options[select.selectedIndex];
+  const pts = opt ? parseFloat(opt.getAttribute('data-pts') || 0) : 0;
+  if (pts > 0) {
+    preview.style.display = 'block';
+    preview.style.color = '#059669';
+    preview.innerText = `เกณฑ์คะแนนพิเศษ: ได้รับคะแนนบวก +${pts.toFixed(1)} แต้ม`;
+  } else {
+    preview.style.display = 'block';
+    preview.style.color = '#64748B';
+    preview.innerText = `จุดจ่ายทั่วไป: 0 แต้ม`;
+  }
+}
+
+async function submitAssignStation(event) {
+  event.preventDefault();
+  const empSelect = document.getElementById('assignStationEmpSelect');
+  const stationSelect = document.getElementById('assignStationCodeSelect');
+  const monthSelect = document.getElementById('assignStationMonthSelect');
+  const remarkInput = document.getElementById('assignStationRemark');
+
+  const emCode = empSelect ? empSelect.value.trim() : '';
+  if (!emCode) {
+    showToast('กรุณาเลือกพนักงาน', 'warning');
+    return;
+  }
+
+  const stationCode = stationSelect ? stationSelect.value.trim() : '';
+  const month = monthSelect ? monthSelect.value.trim() : getDefaultStationMonthStr();
+  const remark = remarkInput ? remarkInput.value.trim() : '';
+
+  let stationText = '';
+  if (stationCode) {
+    const cfg = allStationConfigs.find(c => c.station_code === stationCode);
+    stationText = cfg ? cfg.station_name : stationCode;
+  } else {
+    stationText = 'จุดจ่ายทั่วไป';
+  }
+
+  try {
+    const btn = document.getElementById('btnSubmitAssignStation');
+    if (btn) btn.disabled = true;
+
+    const res = await fetch('/api/kpi/station-roster/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        month: month,
+        assignments: [
+          {
+            em_code: emCode,
+            station_name_text: stationText,
+            station_code: stationCode || null,
+            remark: remark
+          }
+        ]
+      })
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message);
+
+    showToast(`กำหนดจุดจ่ายงานให้พนักงานรหัส ${emCode} เรียบร้อยแล้ว`, 'success');
+    closeAssignStationModal();
+    await loadStationRoster();
+  } catch (err) {
+    showToast('เกิดข้อผิดพลาด: ' + err.message, 'error');
+  } finally {
+    const btn = document.getElementById('btnSubmitAssignStation');
+    if (btn) btn.disabled = false;
+  }
+}
+
 
