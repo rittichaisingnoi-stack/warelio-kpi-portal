@@ -20,7 +20,7 @@ class CloudSyncService {
     const supabaseUrl = (configs.SUPABASE_URL || process.env.SUPABASE_URL || 'https://mtncniggrijtixrjdbub.supabase.co').trim();
     const supabaseSecretKey = (configs.SUPABASE_SECRET_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY || '').trim();
     const supabaseDbUrl = (configs.SUPABASE_DB_URL || process.env.SUPABASE_DB_URL || '').trim();
-    const renderAppUrl = (configs.RENDER_APP_URL || process.env.RENDER_APP_URL || '').trim();
+    const renderAppUrl = (configs.RENDER_APP_URL || process.env.RENDER_APP_URL || 'https://wh-neo-evaluation-score.onrender.com').trim();
     const autoSyncEnabled = (configs.AUTO_SYNC_ENABLED || process.env.AUTO_SYNC_ENABLED || 'true') !== 'false';
     const syncIntervalMinutes = parseInt(configs.SYNC_INTERVAL_MINUTES || process.env.SYNC_INTERVAL_MINUTES || '5', 10) || 5;
     const lastSyncAt = configs.LAST_CLOUD_SYNC_AT || null;

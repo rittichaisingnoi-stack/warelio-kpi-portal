@@ -5,28 +5,27 @@ let allPresets = [];
 let currentPointType = 'ADD';
 let desktopCurrentUser = null;
 
-// Initialize
+// Initialize: บังคับให้ล็อกอินใหม่ทุกครั้งที่เปิดเข้าหน้าเว็บหลัก (ยกเว้นหน้า mobile.html)
 document.addEventListener('DOMContentLoaded', () => {
   initDesktopUser();
+});
+
+function loadAllDashboardData() {
   loadSummaryData();
   loadEmployees();
   loadPresets();
   loadPeriods();
   loadPolicies();
   loadPositions();
-});
+}
 
 // --- Supervisor Authentication & Context (Desktop) ---
 function initDesktopUser() {
-  const savedUser = localStorage.getItem('warelio_supervisor_user');
-  if (savedUser) {
-    try {
-      desktopCurrentUser = JSON.parse(savedUser);
-    } catch(e) {
-      desktopCurrentUser = null;
-    }
-  }
+  // ล้างสถานะเดิมเพื่อให้ทุกครั้งที่เข้าหน้าเว็บหลักต้องล็อกอินก่อนเสมอ
+  desktopCurrentUser = null;
+  localStorage.removeItem('warelio_supervisor_user');
   renderDesktopUserHeader();
+  openLoginModal();
 }
 
 function renderDesktopUserHeader() {
@@ -59,11 +58,21 @@ function renderDesktopUserHeader() {
 function openLoginModal() {
   const errBox = document.getElementById('desktopLoginError');
   if (errBox) errBox.style.display = 'none';
+  const closeBtn = document.getElementById('btnCloseLoginModal');
+  const cancelBtn = document.getElementById('btnCancelLoginModal');
+  if (closeBtn) closeBtn.style.display = desktopCurrentUser ? 'block' : 'none';
+  if (cancelBtn) cancelBtn.style.display = desktopCurrentUser ? 'inline-flex' : 'none';
   const modal = document.getElementById('loginModal');
   if (modal) modal.classList.add('active');
+  setTimeout(() => {
+    const userInp = document.getElementById('desktopLoginUsername');
+    if (userInp) userInp.focus();
+  }, 100);
 }
 
 function closeLoginModal() {
+  // ห้ามปิดหน้าต่าง Login หากยังไม่ได้เข้าสู่ระบบ
+  if (!desktopCurrentUser) return;
   const modal = document.getElementById('loginModal');
   if (modal) modal.classList.remove('active');
 }
@@ -96,10 +105,10 @@ async function handleDesktopLogin(event) {
     }
 
     desktopCurrentUser = json.user;
-    localStorage.setItem('warelio_supervisor_user', JSON.stringify(desktopCurrentUser));
     renderDesktopUserHeader();
     closeLoginModal();
 
+    loadAllDashboardData();
     updateModalSupervisorBar();
     onAdjustEmpSelected();
   } catch (err) {
@@ -111,14 +120,16 @@ async function handleDesktopLogin(event) {
 }
 
 function handleDesktopLogout() {
-  if (confirm('คุณต้องการออกจากระบบหัวหน้างานใช่หรือไม่?')) {
+  if (confirm('คุณต้องการออกจากระบบใช่หรือไม่?')) {
     desktopCurrentUser = null;
     localStorage.removeItem('warelio_supervisor_user');
+    const tbody = document.getElementById('leaderboardBody');
+    if (tbody) tbody.innerHTML = '';
+    const form = document.getElementById('desktopLoginForm');
+    if (form) form.reset();
     renderDesktopUserHeader();
     updateModalSupervisorBar();
-    if (document.getElementById('adjustModal') && document.getElementById('adjustModal').classList.contains('active')) {
-      onAdjustEmpSelected();
-    }
+    openLoginModal();
   }
 }
 

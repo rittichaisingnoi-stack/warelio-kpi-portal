@@ -969,20 +969,20 @@
     </div>
   </div>
 
-  <!-- Modal: Supervisor Login (Desktop) -->
-  <div class="modal-overlay" id="loginModal">
-    <div class="modal-container" style="max-width: 440px;">
+  <!-- Modal: Supervisor Login Gate (Desktop - Required Every Visit) -->
+  <div class="modal-overlay active" id="loginModal" style="background: rgba(15, 23, 42, 0.94); backdrop-filter: blur(12px); z-index: 9999;">
+    <div class="modal-container" style="max-width: 440px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);">
       <div class="modal-header">
-        <h3 class="modal-title"><i class="fa-solid fa-user-shield" style="color: #4F46E5;"></i> เข้าสู่ระบบหัวหน้างาน</h3>
-        <button class="btn-close" onclick="closeLoginModal()">&times;</button>
+        <h3 class="modal-title"><i class="fa-solid fa-user-shield" style="color: #4F46E5;"></i> เข้าสู่ระบบจัดการ KPI Portal</h3>
+        <button class="btn-close" id="btnCloseLoginModal" onclick="closeLoginModal()" style="display: none;">&times;</button>
       </div>
       <form id="desktopLoginForm" onsubmit="handleDesktopLogin(event)">
         <p style="font-size: 13px; color: #64748B; margin-bottom: 16px; line-height: 1.5;">
-          เข้าสู่ระบบด้วยบัญชีหัวหน้างานเพื่อบันทึกการปรับคะแนนพนักงาน และตรวจสอบสิทธิ์ไม่ให้บวกลบคะแนนข้ามแผนก
+          กรุณาเข้าสู่ระบบด้วยบัญชีหัวหน้างาน / ผู้ดูแลระบบ ทุกครั้งก่อนเข้าใช้งานหน้าเว็บจัดการข้อมูล
         </p>
         <div class="form-group">
           <label class="form-label">Username / รหัสพนักงานหัวหน้างาน *</label>
-          <input type="text" id="desktopLoginUsername" class="form-control" required placeholder="เช่น 102205 หรือ admin" style="font-weight: 600;">
+          <input type="text" id="desktopLoginUsername" class="form-control" required placeholder="เช่น 102205 หรือ admin" style="font-weight: 600;" autofocus>
         </div>
         <div class="form-group">
           <label class="form-label">รหัสผ่าน (Password) *</label>
@@ -990,10 +990,15 @@
         </div>
         <div id="desktopLoginError" style="display: none; background: #FEE2E2; border: 1.5px solid #FCA5A5; color: #B91C1C; padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 14px;"></div>
         <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
-          <button type="button" class="btn btn-secondary" onclick="closeLoginModal()">ยกเลิก</button>
-          <button type="submit" class="btn btn-primary" id="btnDesktopLoginSubmit">
+          <button type="button" class="btn btn-secondary" id="btnCancelLoginModal" onclick="closeLoginModal()" style="display: none;">ยกเลิก</button>
+          <button type="submit" class="btn btn-primary" id="btnDesktopLoginSubmit" style="width: 100%; justify-content: center; padding: 11px;">
             <i class="fa-solid fa-right-to-bracket"></i> เข้าสู่ระบบ
           </button>
+        </div>
+        <div style="margin-top: 16px; padding-top: 12px; border-top: 1px dashed #E2E8F0; text-align: center; font-size: 12.5px;">
+          <a href="/mobile.html" style="color: #4F46E5; text-decoration: none; font-weight: 600;">
+            <i class="fa-solid fa-mobile-screen-button"></i> สำหรับพนักงานดูคะแนนตนเอง (ไม่ต้องล็อกอิน) คลิกที่นี่
+          </a>
         </div>
       </form>
     </div>
