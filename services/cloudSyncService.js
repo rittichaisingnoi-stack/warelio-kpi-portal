@@ -370,6 +370,10 @@ class CloudSyncService {
             is_active = EXCLUDED.is_active;
         `, [p.period_id, p.period_name, p.start_date, p.end_date, p.initial_score, p.is_active, p.created_at]);
       }
+      if (periodsRes.rows.length > 0) {
+        const validIds = periodsRes.rows.map(p => Number(p.period_id)).join(',');
+        await cloudPool.query(`DELETE FROM kpi_scoring_periods WHERE period_id NOT IN (${validIds});`);
+      }
 
       // 3.5 ซิงค์การตั้งค่าระบบ (kpi_system_configs ยกเว้น Connection String / Secret Key ลับ)
       const sysCfgRes = await pool.query(`
