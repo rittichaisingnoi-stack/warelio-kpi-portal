@@ -1,0 +1,9 @@
+{
+  "name": "kpi_portal_public_entry",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "postinstall": "npm --prefix .. install",
+    "start": "node ../server.js"
+  }
+}
