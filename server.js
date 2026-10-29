@@ -535,21 +535,16 @@ app.post('/api/kpi/adjust', upload.single('evidence_photo'), async (req, res) =>
 
     if (supRes.rows.length > 0) {
       const supervisor = supRes.rows[0];
-      const isGlobalAdmin = ['Admin', 'Executive'].includes(supervisor.role) || 
-                            supervisor.team === 'WH' || 
-                            supervisor.grp === 'WH';
+      const isGlobalAdmin = String(supervisor.role || '').trim().toLowerCase() === 'admin';
 
       if (!isGlobalAdmin) {
-        // ตรวจสอบว่าอยู่แผนก/กลุ่มเดียวกันหรือไม่
-        const isSameDept = (
-          (supervisor.grp && targetEmp.grp && supervisor.grp === targetEmp.grp) ||
-          (supervisor.team && targetEmp.team && supervisor.team === targetEmp.team) ||
-          (supervisor.dept && targetEmp.dept && supervisor.dept === targetEmp.dept)
-        );
+        const supDept = String(supervisor.dept || supervisor.team || supervisor.grp || '').trim();
+        const empDept = String(targetEmp.dept || targetEmp.team || targetEmp.grp || '').trim();
+        const isSameDept = Boolean(supDept && supDept !== '-' && supDept === empDept);
 
         if (!isSameDept) {
-          const supDeptLabel = supervisor.dept || supervisor.grp || 'ไม่ระบุ';
-          const empDeptLabel = targetEmp.dept || targetEmp.grp || 'ไม่ระบุ';
+          const supDeptLabel = supDept || 'ไม่ระบุ';
+          const empDeptLabel = empDept || 'ไม่ระบุ';
           return res.status(403).json({
             success: false,
             message: `ไม่อนุญาตให้บวกลบคะแนนข้ามแผนก: คุณ (${supervisor.fullname}) สังกัดแผนก "${supDeptLabel}" แต่พนักงานเป้าหมาย (${targetEmp.name_th}) สังกัดแผนก "${empDeptLabel}"`

@@ -176,6 +176,7 @@ async function handleDesktopLogin(event) {
 
     loadAllDashboardData();
     updateModalSupervisorBar();
+    populateEmpDropdown();
     onAdjustEmpSelected();
   } catch (err) {
     btn.disabled = false;
@@ -352,14 +353,36 @@ function handleSearch() {
 }
 
 // 3. Manual Adjust Modal Logic & Employee Search
+function isAdminRole(user) {
+  if (!user) return false;
+  return String(user.role || '').trim().toLowerCase() === 'admin';
+}
+
+function isSameDeptForAdjust(emp, user) {
+  if (!user || !emp) return false;
+  if (isAdminRole(user)) return true;
+
+  const userDept = String(user.dept || user.team || user.grp || '').trim();
+  const empDept = String(emp.dept || emp.team || emp.grp || '').trim();
+  if (!userDept || userDept === '-') return false;
+  return empDept === userDept;
+}
+
+function getScopedEmployeesForAdjust() {
+  if (!desktopCurrentUser) return [];
+  if (isAdminRole(desktopCurrentUser)) {
+    return allEmployeesMaster;
+  }
+  return allEmployeesMaster.filter(e => isSameDeptForAdjust(e, desktopCurrentUser));
+}
+
 async function loadEmployees() {
   try {
     const res = await fetch('/api/kpi/employees');
     const json = await res.json();
     if (json.success) {
       allEmployeesMaster = json.employees || [];
-      const badge = document.getElementById('empCountBadge');
-      if (badge) badge.innerText = `(${allEmployeesMaster.length} คน)`;
+      populateEmpDropdown();
       populateTxDropdown();
     }
   } catch (err) {
@@ -414,6 +437,19 @@ function closeAdjustModal() {
 }
 
 function openAdjustForEmp(emCode, name) {
+  if (!desktopCurrentUser) {
+    openLoginModal();
+    return;
+  }
+
+  const targetEmp = allEmployeesMaster.find(e => e.em_code === emCode);
+  if (targetEmp && !isSameDeptForAdjust(targetEmp, desktopCurrentUser)) {
+    const supDept = desktopCurrentUser.dept || desktopCurrentUser.team || desktopCurrentUser.grp || '-';
+    const empDept = targetEmp.dept || targetEmp.team || targetEmp.grp || '-';
+    alert(`ไม่อนุญาตให้ปรับคะแนนข้ามแผนก\nบัญชีของคุณ (${desktopCurrentUser.role}) สังกัดแผนก "${supDept}" สามารถเลือกปรับคะแนนได้เฉพาะพนักงานในแผนก "${supDept}" เท่านั้น (พนักงาน ${name || emCode} สังกัดแผนก "${empDept}")`);
+    return;
+  }
+
   openAdjustModal();
   setTimeout(() => {
     const select = document.getElementById('adjustEmpSelect');
@@ -428,8 +464,15 @@ function populateEmpDropdown(filteredList = null, selectedEmCode = '') {
   const select = document.getElementById('adjustEmpSelect');
   if (!select) return;
 
-  const list = filteredList !== null ? filteredList : allEmployeesMaster;
-  select.innerHTML = '<option value="">-- เลือกรหัส / ชื่อพนักงาน --</option>';
+  const baseList = getScopedEmployeesForAdjust();
+  const list = filteredList !== null ? filteredList : baseList;
+  const userDept = desktopCurrentUser ? (desktopCurrentUser.dept || desktopCurrentUser.team || desktopCurrentUser.grp || '-') : '-';
+  const isAdmin = isAdminRole(desktopCurrentUser);
+
+  const defaultLabel = isAdmin
+    ? '-- เลือกรหัส / ชื่อพนักงาน (ทุกแผนก) --'
+    : `-- เลือกรหัส / ชื่อพนักงาน (เฉพาะแผนก ${userDept}) --`;
+  select.innerHTML = `<option value="">${defaultLabel}</option>`;
 
   list.forEach(e => {
     const opt = document.createElement('option');
@@ -443,10 +486,12 @@ function populateEmpDropdown(filteredList = null, selectedEmCode = '') {
   const countBadge = document.getElementById('empCountBadge');
   if (countBadge) {
     if (filteredList !== null) {
-      countBadge.innerText = `(พบ ${list.length} คน)`;
-      countBadge.style.color = list.length > 0 ? '#4F46E5' : '#EF4444';
+      countBadge.innerText = `(พบ ${list.length} คน${!isAdmin ? ` ในแผนก ${userDept}` : ''})`;
+      countBadge.style.color = list.length > 0 ? '#2563EB' : '#DC2626';
     } else {
-      countBadge.innerText = `(${allEmployeesMaster.length} คน)`;
+      countBadge.innerText = isAdmin
+        ? `(ทุกแผนก ${baseList.length} คน)`
+        : `(เฉพาะแผนก ${userDept}: ${baseList.length} คน)`;
       countBadge.style.color = '#64748B';
     }
   }
@@ -467,7 +512,8 @@ function filterAdjustEmployees() {
     return;
   }
 
-  const filtered = allEmployeesMaster.filter(e => {
+  const baseList = getScopedEmployeesForAdjust();
+  const filtered = baseList.filter(e => {
     const code = (e.em_code || '').toLowerCase();
     const name = (e.name_th || '').toLowerCase();
     const dept = (e.dept || '').toLowerCase();
@@ -531,15 +577,7 @@ function onAdjustEmpSelected() {
   }
 
   // Department matching rule:
-  const isGlobalAdmin = ['Admin', 'Executive'].includes(desktopCurrentUser.role) || 
-                        desktopCurrentUser.team === 'WH' || 
-                        desktopCurrentUser.grp === 'WH';
-
-  const isSameDept = isGlobalAdmin || (
-    (desktopCurrentUser.grp && emp.grp && desktopCurrentUser.grp === emp.grp) ||
-    (desktopCurrentUser.team && emp.team && desktopCurrentUser.team === emp.team) ||
-    (desktopCurrentUser.dept && emp.dept && desktopCurrentUser.dept === emp.dept)
-  );
+  const isSameDept = isSameDeptForAdjust(emp, desktopCurrentUser);
 
   if (!isSameDept) {
     // Cross-department blocked!
@@ -684,15 +722,7 @@ async function submitAdjustment(event) {
 
   const emp = allEmployeesMaster.find(e => e.em_code === emCode);
   if (emp) {
-    const isGlobalAdmin = ['Admin', 'Executive'].includes(desktopCurrentUser.role) || 
-                          desktopCurrentUser.team === 'WH' || 
-                          desktopCurrentUser.grp === 'WH';
-
-    const isSameDept = isGlobalAdmin || (
-      (desktopCurrentUser.grp && emp.grp && desktopCurrentUser.grp === emp.grp) ||
-      (desktopCurrentUser.team && emp.team && desktopCurrentUser.team === emp.team) ||
-      (desktopCurrentUser.dept && emp.dept && desktopCurrentUser.dept === emp.dept)
-    );
+    const isSameDept = isSameDeptForAdjust(emp, desktopCurrentUser);
 
     if (!isSameDept) {
       alert(`ไม่อนุญาตให้บวกลบคะแนนข้ามแผนก!\nคุณสังกัดแผนก "${desktopCurrentUser.dept || desktopCurrentUser.grp}" แต่พนักงานเป้าหมาย (${emp.name_th}) สังกัดแผนก "${emp.dept || emp.grp}"`);
