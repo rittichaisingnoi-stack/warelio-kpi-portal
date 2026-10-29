@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: warelio-kpi-portal
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: IS_CLOUD
+        value: "true"
+      - key: SUPABASE_URL
+        value: "https://mtncniggrijtixrjdbub.supabase.co"
+      - key: SUPABASE_SECRET_KEY
+        sync: false

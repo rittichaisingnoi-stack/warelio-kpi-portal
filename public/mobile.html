@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Warelio KPI Mobile</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#4F46E5">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Prompt', sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    body {
+      background: #F8FAFC;
+      color: #0F172A;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .mobile-header {
+      background: linear-gradient(135deg, #4F46E5, #6366F1);
+      color: white;
+      padding: 20px 20px 24px;
+      border-radius: 0 0 24px 24px;
+      box-shadow: 0 8px 25px rgba(79, 70, 229, 0.25);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .header-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .app-title {
+      font-size: 18px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .mode-switch-btn {
+      background: rgba(255, 255, 255, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: white;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .container {
+      padding: 18px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    /* Login & Cards */
+    .id-input-card {
+      background: white;
+      border-radius: 20px;
+      padding: 24px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+      text-align: center;
+    }
+    .id-input-title {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .id-input-desc {
+      font-size: 13px;
+      color: #64748B;
+      margin-bottom: 18px;
+    }
+    .input-field {
+      width: 100%;
+      padding: 13px 16px;
+      border-radius: 12px;
+      border: 1.5px solid #E2E8F0;
+      font-size: 15px;
+      font-weight: 500;
+      outline: none;
+      margin-bottom: 12px;
+    }
+    .input-field:focus {
+      border-color: #4F46E5;
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+    }
+    .btn-submit {
+      width: 100%;
+      padding: 14px;
+      border-radius: 12px;
+      border: none;
+      background: linear-gradient(135deg, #4F46E5, #6366F1);
+      color: white;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 4px 15px rgba(79, 70, 229, 0.3);
+    }
+    /* Score Hero Card */
+    .score-hero-card {
+      background: white;
+      border-radius: 24px;
+      padding: 24px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.06);
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .score-hero-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 6px;
+      background: linear-gradient(90deg, #4F46E5, #10B981);
+    }
+    .emp-name {
+      font-size: 18px;
+      font-weight: 700;
+      color: #0F172A;
+    }
+    .emp-sub {
+      font-size: 13px;
+      color: #64748B;
+      margin-top: 4px;
+    }
+    .score-circle {
+      width: 135px;
+      height: 135px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #EEF2FF, #F8FAFC);
+      border: 4px solid #4F46E5;
+      margin: 18px auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 8px 24px rgba(79, 70, 229, 0.15);
+    }
+    .score-number {
+      font-size: 40px;
+      font-weight: 800;
+      color: #4F46E5;
+      line-height: 1;
+    }
+    .score-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #64748B;
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+    .grade-pill {
+      display: inline-block;
+      padding: 6px 18px;
+      border-radius: 30px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .grade-A { background: #ECFDF5; color: #059669; border: 1px solid #A7F3D0; }
+    .grade-B { background: #EFF6FF; color: #2563EB; border: 1px solid #BFDBFE; }
+    .grade-C { background: #FFFBEB; color: #D97706; border: 1px solid #FDE68A; }
+    .grade-D { background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; }
+
+    /* Breakdown Grid */
+    .breakdown-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 20px;
+    }
+    .breakdown-box {
+      padding: 14px;
+      border-radius: 14px;
+      text-align: center;
+    }
+    .box-deduct { background: #FEF2F2; color: #EF4444; }
+    .box-add { background: #ECFDF5; color: #10B981; }
+    .box-val { font-size: 20px; font-weight: 700; }
+    .box-lbl { font-size: 11px; font-weight: 600; }
+
+    /* Timeline */
+    .section-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #334155;
+    }
+    .timeline-card {
+      background: white;
+      border-radius: 16px;
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .timeline-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .timeline-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+    }
+    .icon-add { background: #ECFDF5; color: #10B981; }
+    .icon-deduct { background: #FEF2F2; color: #EF4444; }
+    .timeline-desc {
+      font-size: 13px;
+      font-weight: 600;
+      color: #0F172A;
+    }
+    .timeline-date {
+      font-size: 11px;
+      color: #94A3B8;
+      margin-top: 2px;
+    }
+    .timeline-points {
+      font-size: 16px;
+      font-weight: 700;
+    }
+    .pts-add { color: #10B981; }
+    .pts-deduct { color: #EF4444; }
+
+    /* Supervisor Form */
+    .switch-group {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .switch-btn {
+      flex: 1;
+      padding: 12px;
+      border-radius: 12px;
+      border: none;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .switch-btn.active.add { background: #10B981; color: white; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); }
+    .switch-btn.active.deduct { background: #EF4444; color: white; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3); }
+    .switch-btn:not(.active) { background: #E2E8F0; color: #64748B; }
+
+    .form-ctrl {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid #CBD5E1;
+      font-size: 14px;
+      margin-bottom: 14px;
+      outline: none;
+    }
+    .form-ctrl:focus {
+      border-color: #4F46E5;
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+    }
+    .photo-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: #F1F5F9;
+      border: 2px dashed #CBD5E1;
+      padding: 14px;
+      border-radius: 12px;
+      color: #475569;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+    .user-info-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #EEF2FF;
+      border: 1px solid #C7D2FE;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #3730A3;
+      margin-bottom: 16px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Mobile Bar -->
+  <header class="mobile-header">
+    <div class="header-top">
+      <div class="app-title">
+        <i class="fa-solid fa-award"></i>
+        <span>Warelio KPI</span>
+      </div>
+      <button class="mode-switch-btn" onclick="toggleMode()" id="modeBtn">
+        <i class="fa-solid fa-user-shield"></i> สลับเป็นหัวหน้างาน
+      </button>
+    </div>
+    <div style="font-size: 12px; opacity: 0.9;" id="headerSub">
+      ระบบตรวจสอบคะแนนพนักงาน (ไม่ต้องล็อกอิน)
+    </div>
+  </header>
+
+  <div class="container">
+    
+    <!-- ========================================== -->
+    <!-- VIEW A: พนักงานดูคะแนนของตนเอง (NO LOGIN) -->
+    <!-- ========================================== -->
+    <div id="viewEmployee">
+      
+      <!-- ID Input Form (แสดงเมื่อยังไม่มี ID บันทึกไว้) -->
+      <div class="id-input-card" id="idPromptCard" style="display: none;">
+        <div class="id-input-title">ตรวจสอบคะแนนของตนเอง</div>
+        <div class="id-input-desc">พิมพ์รหัสพนักงานของคุณเพื่อเปิดดูคะแนนและเกรดผลงาน</div>
+        <input type="text" id="inputEmpId" class="input-field" placeholder="กรอกรหัสพนักงาน เช่น 102452" style="text-align: center;">
+        <button class="btn-submit" onclick="loadScorecard()">
+          <i class="fa-solid fa-magnifying-glass"></i> ดูคะแนนของฉัน
+        </button>
+      </div>
+
+      <!-- Scorecard Display -->
+      <div id="scorecardDisplay" style="display: none;">
+        <div class="score-hero-card">
+          <div class="emp-name" id="dispEmpName">-</div>
+          <div class="emp-sub" id="dispEmpInfo">รหัส: - | แผนก: -</div>
+
+          <div class="score-circle">
+            <div class="score-number" id="dispNetScore">100</div>
+            <div class="score-label">คะแนนสุทธิ</div>
+          </div>
+
+          <div>
+            <span class="grade-pill grade-A" id="dispGrade">เกรด A</span>
+          </div>
+
+          <div class="breakdown-grid">
+            <div class="breakdown-box box-deduct">
+              <div class="box-val" id="dispDeduct">0</div>
+              <div class="box-lbl">คะแนนถูกหักรวม</div>
+            </div>
+            <div class="breakdown-box box-add">
+              <div class="box-val" id="dispAdd">0</div>
+              <div class="box-lbl">คะแนนบวกรวม</div>
+            </div>
+          </div>
+
+          <div id="dispSpecialStationsBox" style="display: none; margin-top: 14px; padding: 12px 14px; background: #EEF2FF; border: 1.5px solid #C7D2FE; border-radius: 12px;"></div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
+          <div class="section-title">ประวัติการปรับคะแนนล่าสุด</div>
+          <button style="background: none; border: none; color: #4F46E5; font-size: 12px; font-weight: 600; cursor: pointer;" onclick="changeEmployeeId()">
+            <i class="fa-solid fa-arrow-right-from-bracket"></i> เปลี่ยนรหัส
+          </button>
+        </div>
+
+        <div id="timelineContainer" style="margin-top: 12px;">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ========================================== -->
+    <!-- VIEW B: หัวหน้างาน (ต้อง Login ก่อนปรับคะแนน) -->
+    <!-- ========================================== -->
+    <div id="viewSupervisor" style="display: none;">
+      
+      <!-- B1: กล่อง Login สำหรับหัวหน้างาน -->
+      <div class="id-input-card" id="supervisorLoginCard">
+        <div style="width: 50px; height: 50px; border-radius: 14px; background: #EEF2FF; color: #4F46E5; display: flex; align-items: center; justify-content: center; font-size: 22px; margin: 0 auto 14px;">
+          <i class="fa-solid fa-lock"></i>
+        </div>
+        <div class="id-input-title">เข้าสู่ระบบสำหรับหัวหน้างาน</div>
+        <div class="id-input-desc">ล็อกอินด้วยบัญชี Warelio ของคุณเพื่อปรับคะแนนหน้างาน</div>
+
+        <form id="supervisorLoginForm" onsubmit="handleSupervisorLogin(event)">
+          <input type="text" class="input-field" id="loginUsername" placeholder="Username / รหัสหัวหน้างาน" required>
+          <input type="password" class="input-field" id="loginPassword" placeholder="Password รหัสผ่าน" required>
+          <button type="submit" class="btn-submit" id="btnLoginSub">
+            <i class="fa-solid fa-right-to-bracket"></i> เข้าสู่ระบบ
+          </button>
+        </form>
+      </div>
+
+      <!-- B2: ฟอร์มปรับคะแนนหน้างาน (แสดงหลัง Login สำเร็จ) -->
+      <div class="id-input-card" id="supervisorAdjustCard" style="display: none; text-align: left;">
+        
+        <div class="user-info-bar">
+          <div>
+            <i class="fa-solid fa-user-check"></i> <span id="authUserName">หัวหน้างาน</span>
+          </div>
+          <button style="background: none; border: none; color: #DC2626; font-size: 12px; font-weight: 700; cursor: pointer;" onclick="handleSupervisorLogout()">
+            <i class="fa-solid fa-power-off"></i> ออกจากระบบ
+          </button>
+        </div>
+
+        <div class="id-input-title" style="margin-bottom: 14px;">
+          <i class="fa-solid fa-sliders" style="color: #4F46E5;"></i> ปรับคะแนนด่วนหน้างาน
+        </div>
+
+        <!-- Positive (+) vs Negative (-) Tabs -->
+        <div class="switch-group">
+          <button type="button" class="switch-btn active add" id="mTabAdd" onclick="setMobilePointType('ADD')">
+            <i class="fa-solid fa-circle-plus"></i> คะแนนบวก
+          </button>
+          <button type="button" class="switch-btn deduct" id="mTabDeduct" onclick="setMobilePointType('DEDUCT')">
+            <i class="fa-solid fa-circle-minus"></i> ตัดคะแนน
+          </button>
+        </div>
+
+        <form id="mobileAdjustForm" onsubmit="submitMobileAdjust(event)">
+          <input type="text" class="form-ctrl" id="mEmpCode" placeholder="รหัสพนักงาน (เช่น 102452)" required oninput="onMobileEmpCodeChange()">
+          <div id="mEmpFeedback" style="display: none; margin-top: -6px; margin-bottom: 12px; font-size: 13px; border-radius: 8px; padding: 8px 12px;"></div>
+          <select class="form-ctrl" id="mReasonSelect" required onchange="onMobileReasonChange()">
+            <option value="">-- เลือกเหตุผลมาตรฐาน --</option>
+          </select>
+          <input type="number" step="0.5" class="form-ctrl" id="mPoints" placeholder="จำนวนคะแนน" required>
+          <textarea class="form-ctrl" id="mDescription" rows="2" placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)"></textarea>
+
+          <label class="photo-btn" for="mPhotoInput">
+            <i class="fa-solid fa-camera"></i> <span id="photoLabel">แตะเพื่อถ่ายรูป / แนบหลักฐาน</span>
+          </label>
+          <input type="file" id="mPhotoInput" accept="image/*" capture="environment" style="display: none;" onchange="onPhotoSelected()">
+
+          <button type="submit" class="btn-submit" id="mSubmitBtn" style="background: linear-gradient(135deg, #10B981, #059669);">
+            <i class="fa-solid fa-check"></i> บันทึกข้อมูล
+          </button>
+        </form>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script>
+    let currentMode = 'EMPLOYEE';
+    let mobilePointType = 'ADD';
+    let cachedPresets = [];
+    let supervisorUser = null;
+    let mobileEmployeesList = [];
+
+    document.addEventListener('DOMContentLoaded', () => {
+      // ตรวจสอบรหัสพนักงานที่จำไว้
+      const savedEmpId = localStorage.getItem('warelio_emp_id');
+      if (savedEmpId) {
+        document.getElementById('inputEmpId').value = savedEmpId;
+        loadScorecard(savedEmpId);
+      } else {
+        document.getElementById('idPromptCard').style.display = 'block';
+      }
+
+      // ตรวจสอบ session ของหัวหน้างาน
+      const savedUser = localStorage.getItem('warelio_supervisor_user');
+      if (savedUser) {
+        try {
+          supervisorUser = JSON.parse(savedUser);
+          showSupervisorAdjustUI();
+        } catch(e) {}
+      }
+
+      loadMobilePresets();
+      loadMobileEmployees();
+    });
+
+    async function loadMobileEmployees() {
+      try {
+        const res = await fetch('/api/kpi/employees');
+        const json = await res.json();
+        if (json.success) {
+          mobileEmployeesList = json.employees || [];
+        }
+      } catch (e) {
+        console.error('Failed to load employees for mobile check', e);
+      }
+    }
+
+    // สลับระหว่างมุมมองพนักงาน กับหัวหน้างาน
+    function toggleMode() {
+      if (currentMode === 'EMPLOYEE') {
+        currentMode = 'SUPERVISOR';
+        document.getElementById('viewEmployee').style.display = 'none';
+        document.getElementById('viewSupervisor').style.display = 'block';
+        document.getElementById('modeBtn').innerHTML = '<i class="fa-solid fa-user"></i> สลับเป็นพนักงาน';
+        document.getElementById('headerSub').innerText = 'ระบบสำหรับหัวหน้างาน (เข้าสู่ระบบเพื่อปรับคะแนน)';
+      } else {
+        currentMode = 'EMPLOYEE';
+        document.getElementById('viewEmployee').style.display = 'block';
+        document.getElementById('viewSupervisor').style.display = 'none';
+        document.getElementById('modeBtn').innerHTML = '<i class="fa-solid fa-user-shield"></i> สลับเป็นหัวหน้างาน';
+        document.getElementById('headerSub').innerText = 'ระบบตรวจสอบคะแนนพนักงาน (ไม่ต้องล็อกอิน)';
+      }
+    }
+
+    // --- ฟังก์ชันฝั่งพนักงาน ---
+    async function loadScorecard(empId) {
+      const id = empId || document.getElementById('inputEmpId').value.trim();
+      if (!id) {
+        alert('กรุณากรอกรหัสพนักงาน');
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/kpi/employee/${id}`);
+        const json = await res.json();
+
+        if (!json.success) {
+          alert(json.message);
+          return;
+        }
+
+        localStorage.setItem('warelio_emp_id', id);
+
+        document.getElementById('idPromptCard').style.display = 'none';
+        document.getElementById('scorecardDisplay').style.display = 'block';
+
+        const emp = json.employee;
+        document.getElementById('dispEmpName').innerText = emp.name_th || 'พนักงาน';
+        document.getElementById('dispEmpInfo').innerText = `รหัส: ${emp.em_code} | แผนก: ${emp.team || emp.grp || '-'}`;
+        document.getElementById('dispNetScore').innerText = parseFloat(emp.net_score).toFixed(1);
+        document.getElementById('dispDeduct').innerText = `-${parseFloat(emp.total_deducted).toFixed(1)}`;
+        document.getElementById('dispAdd').innerText = `+${parseFloat(emp.total_added).toFixed(1)}`;
+
+        const gradeEl = document.getElementById('dispGrade');
+        gradeEl.className = `grade-pill grade-${emp.current_grade}`;
+        gradeEl.innerText = `เกรด ${emp.current_grade}`;
+
+        const specialBox = document.getElementById('dispSpecialStationsBox');
+        if (specialBox) {
+          if (json.special_stations && json.special_stations.length > 0) {
+            specialBox.style.display = 'block';
+            specialBox.innerHTML = `
+              <div style="font-size: 12px; font-weight: 700; color: #4338CA; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                <i class="fa-solid fa-award" style="color: #6366F1;"></i> คุณสมบัติพิเศษประจำจุดจ่ายงานยาก:
+              </div>
+              ${json.special_stations.map(st => `
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #1E293B; margin-top: 4px;">
+                  <span><b>• ${st.station_name}</b></span>
+                  <span style="color: #059669; font-weight: 700;">+${parseFloat(st.bonus_points).toFixed(1)} แต้ม</span>
+                </div>
+              `).join('')}
+            `;
+          } else {
+            specialBox.style.display = 'none';
+          }
+        }
+
+        const timelineBox = document.getElementById('timelineContainer');
+        timelineBox.innerHTML = '';
+        if (json.timeline && json.timeline.length > 0) {
+          json.timeline.forEach(t => {
+            const isAdd = parseFloat(t.points_change) > 0;
+            const item = document.createElement('div');
+            item.className = 'timeline-card';
+            item.innerHTML = `
+              <div class="timeline-left">
+                <div class="timeline-icon ${isAdd ? 'icon-add' : 'icon-deduct'}">
+                  <i class="fa-solid ${isAdd ? 'fa-plus' : 'fa-minus'}"></i>
+                </div>
+                <div>
+                  <div class="timeline-desc">${t.reason_description}</div>
+                  <div class="timeline-date">${new Date(t.transaction_date).toLocaleDateString('th-TH')}</div>
+                </div>
+              </div>
+              <div class="timeline-points ${isAdd ? 'pts-add' : 'pts-deduct'}">
+                ${isAdd ? '+' : ''}${parseFloat(t.points_change).toFixed(1)}
+              </div>
+            `;
+            timelineBox.appendChild(item);
+          });
+        } else {
+          timelineBox.innerHTML = '<div style="text-align: center; color: #94A3B8; padding: 20px; font-size: 13px;">ยังไม่มีประวัติการปรับคะแนน</div>';
+        }
+
+      } catch (err) {
+        alert('เกิดข้อผิดพลาดในการโหลดข้อมูล: ' + err.message);
+      }
+    }
+
+    function changeEmployeeId() {
+      localStorage.removeItem('warelio_emp_id');
+      document.getElementById('scorecardDisplay').style.display = 'none';
+      document.getElementById('idPromptCard').style.display = 'block';
+      document.getElementById('inputEmpId').value = '';
+    }
+
+    // --- ฟังก์ชันฝั่งหัวหน้างาน & Authentication ---
+    async function handleSupervisorLogin(e) {
+      e.preventDefault();
+      const u = document.getElementById('loginUsername').value.trim();
+      const p = document.getElementById('loginPassword').value;
+
+      try {
+        const btn = document.getElementById('btnLoginSub');
+        btn.disabled = true;
+        btn.innerText = 'กำลังตรวจสอบ...';
+
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: u, password: p })
+        });
+        const json = await res.json();
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> เข้าสู่ระบบ';
+
+        if (!json.success) {
+          alert(json.message);
+          return;
+        }
+
+        supervisorUser = json.user;
+        localStorage.setItem('warelio_supervisor_user', JSON.stringify(supervisorUser));
+        showSupervisorAdjustUI();
+      } catch (err) {
+        alert('เข้าสู่ระบบไม่สำเร็จ: ' + err.message);
+      }
+    }
+
+    function showSupervisorAdjustUI() {
+      if (!supervisorUser) return;
+      document.getElementById('supervisorLoginCard').style.display = 'none';
+      document.getElementById('supervisorAdjustCard').style.display = 'block';
+      const deptStr = supervisorUser.dept || supervisorUser.grp ? ` [แผนก ${supervisorUser.dept || supervisorUser.grp}]` : '';
+      document.getElementById('authUserName').innerText = `${supervisorUser.fullname || supervisorUser.username} (${supervisorUser.role})${deptStr}`;
+      document.getElementById('headerSub').innerText = `หัวหน้างาน: ${supervisorUser.fullname || supervisorUser.username}${deptStr}`;
+    }
+
+    function onMobileEmpCodeChange() {
+      const code = (document.getElementById('mEmpCode').value || '').trim();
+      const feedback = document.getElementById('mEmpFeedback');
+      const submitBtn = document.getElementById('mSubmitBtn');
+      if (!code) {
+        feedback.style.display = 'none';
+        submitBtn.disabled = false;
+        submitBtn.style.opacity = '1';
+        submitBtn.style.cursor = 'pointer';
+        return;
+      }
+
+      if (mobileEmployeesList.length === 0) {
+        return;
+      }
+
+      const emp = mobileEmployeesList.find(e => String(e.em_code).toLowerCase() === code.toLowerCase());
+      if (!emp) {
+        feedback.style.display = 'block';
+        feedback.style.background = '#F8FAFC';
+        feedback.style.border = '1px dashed #CBD5E1';
+        feedback.style.color = '#64748B';
+        feedback.innerHTML = '<i class="fa-solid fa-circle-question"></i> กำลังพิมพ์ หรือไม่พบรหัสพนักงานนี้';
+        return;
+      }
+
+      if (!supervisorUser) return;
+      const isGlobalAdmin = ['Admin', 'Executive'].includes(supervisorUser.role) || supervisorUser.team === 'WH' || supervisorUser.grp === 'WH';
+      const isSameDept = isGlobalAdmin || (
+        (supervisorUser.grp && emp.grp && supervisorUser.grp === emp.grp) ||
+        (supervisorUser.team && emp.team && supervisorUser.team === emp.team) ||
+        (supervisorUser.dept && emp.dept && supervisorUser.dept === emp.dept)
+      );
+
+      if (!isSameDept) {
+        feedback.style.display = 'block';
+        feedback.style.background = '#FEE2E2';
+        feedback.style.border = '1.5px solid #FCA5A5';
+        feedback.style.color = '#B91C1C';
+        feedback.innerHTML = `
+          <div style="font-weight: 700; margin-bottom: 2px;"><i class="fa-solid fa-circle-xmark"></i> ไม่อนุญาตให้ปรับคะแนนข้ามแผนก!</div>
+          <div style="font-size: 12px; line-height: 1.4;">
+            คุณสังกัดแผนก <b>"${supervisorUser.dept || supervisorUser.grp || '-'}"</b><br>
+            แต่พนักงาน <b>${emp.name_th}</b> สังกัดแผนก <b>"${emp.dept || emp.grp || '-'}"</b>
+          </div>
+        `;
+        submitBtn.disabled = true;
+        submitBtn.style.opacity = '0.5';
+        submitBtn.style.cursor = 'not-allowed';
+      } else {
+        feedback.style.display = 'block';
+        feedback.style.background = '#ECFDF5';
+        feedback.style.border = '1.5px solid #A7F3D0';
+        feedback.style.color = '#047857';
+        feedback.innerHTML = `
+          <div style="font-weight: 700;"><i class="fa-solid fa-circle-check"></i> ${emp.em_code} - ${emp.name_th}</div>
+          <div style="font-size: 12px;">แผนก: <b>${emp.dept || emp.grp}</b> | ${emp.position_name || '-'}</div>
+        `;
+        submitBtn.disabled = false;
+        submitBtn.style.opacity = '1';
+        submitBtn.style.cursor = 'pointer';
+      }
+    }
+
+    function handleSupervisorLogout() {
+      supervisorUser = null;
+      localStorage.removeItem('warelio_supervisor_user');
+      document.getElementById('supervisorAdjustCard').style.display = 'none';
+      document.getElementById('supervisorLoginCard').style.display = 'block';
+      document.getElementById('supervisorLoginForm').reset();
+      document.getElementById('headerSub').innerText = 'ระบบสำหรับหัวหน้างาน (เข้าสู่ระบบเพื่อปรับคะแนน)';
+    }
+
+    function setMobilePointType(type) {
+      mobilePointType = type;
+      const btnAdd = document.getElementById('mTabAdd');
+      const btnDeduct = document.getElementById('mTabDeduct');
+      const submitBtn = document.getElementById('mSubmitBtn');
+
+      if (type === 'ADD') {
+        btnAdd.className = 'switch-btn active add';
+        btnDeduct.className = 'switch-btn deduct';
+        submitBtn.style.background = 'linear-gradient(135deg, #10B981, #059669)';
+      } else {
+        btnAdd.className = 'switch-btn add';
+        btnDeduct.className = 'switch-btn active deduct';
+        submitBtn.style.background = 'linear-gradient(135deg, #EF4444, #DC2626)';
+      }
+      populateMobilePresets();
+    }
+
+    async function loadMobilePresets() {
+      try {
+        const res = await fetch('/api/kpi/presets');
+        const json = await res.json();
+        if (json.success) {
+          cachedPresets = json.presets;
+          populateMobilePresets();
+        }
+      } catch (e) {}
+    }
+
+    function populateMobilePresets() {
+      const select = document.getElementById('mReasonSelect');
+      select.innerHTML = '<option value="">-- เลือกเหตุผลมาตรฐาน --</option>';
+      const filtered = cachedPresets.filter(p => p.point_type === mobilePointType);
+      filtered.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.reason_code;
+        opt.dataset.points = Math.abs(parseFloat(p.default_points));
+        opt.dataset.name = p.reason_name;
+        opt.innerText = `${p.reason_name} (${mobilePointType === 'ADD' ? '+' : '-'}${Math.abs(p.default_points)} แต้ม)`;
+        select.appendChild(opt);
+      });
+    }
+
+    function onMobileReasonChange() {
+      const select = document.getElementById('mReasonSelect');
+      const opt = select.options[select.selectedIndex];
+      if (opt && opt.dataset.points) {
+        document.getElementById('mPoints').value = opt.dataset.points;
+        if (!document.getElementById('mDescription').value) {
+          document.getElementById('mDescription').value = opt.dataset.name;
+        }
+      }
+    }
+
+    function onPhotoSelected() {
+      const input = document.getElementById('mPhotoInput');
+      if (input.files.length > 0) {
+        document.getElementById('photoLabel').innerText = `แนบรูปแล้ว: ${input.files[0].name}`;
+      }
+    }
+
+    async function submitMobileAdjust(e) {
+      e.preventDefault();
+      if (!supervisorUser) {
+        alert('กรุณาเข้าสู่ระบบก่อนดำเนินการ');
+        return;
+      }
+
+      const emCode = document.getElementById('mEmpCode').value.trim();
+      const reasonCode = document.getElementById('mReasonSelect').value;
+      const points = document.getElementById('mPoints').value;
+      const description = document.getElementById('mDescription').value;
+      const photo = document.getElementById('mPhotoInput');
+
+      // ตรวจสอบการปรับคะแนนข้ามแผนกใน Client ก่อนส่ง
+      const emp = mobileEmployeesList.find(e => String(e.em_code).toLowerCase() === emCode.toLowerCase());
+      if (emp) {
+        const isGlobalAdmin = ['Admin', 'Executive'].includes(supervisorUser.role) || supervisorUser.team === 'WH' || supervisorUser.grp === 'WH';
+        const isSameDept = isGlobalAdmin || (
+          (supervisorUser.grp && emp.grp && supervisorUser.grp === emp.grp) ||
+          (supervisorUser.team && emp.team && supervisorUser.team === emp.team) ||
+          (supervisorUser.dept && emp.dept && supervisorUser.dept === emp.dept)
+        );
+        if (!isSameDept) {
+          alert(`ไม่อนุญาตให้บวกลบคะแนนข้ามแผนก!\nคุณสังกัด "${supervisorUser.dept || supervisorUser.grp}" แต่พนักงานเป้าหมาย (${emp.name_th}) สังกัด "${emp.dept || emp.grp}"`);
+          return;
+        }
+      }
+
+      const formData = new FormData();
+      formData.append('em_code', emCode);
+      formData.append('point_type', mobilePointType);
+      formData.append('points', points);
+      formData.append('reason_code', reasonCode);
+      formData.append('reason_description', description);
+      formData.append('created_by', supervisorUser.username);
+
+      if (photo.files.length > 0) {
+        formData.append('evidence_photo', photo.files[0]);
+      }
+
+      try {
+        const btn = document.getElementById('mSubmitBtn');
+        btn.disabled = true;
+        btn.innerText = 'กำลังส่งข้อมูล...';
+
+        const res = await fetch('/api/kpi/adjust', { method: 'POST', body: formData });
+        const json = await res.json();
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-check"></i> บันทึกข้อมูล';
+
+        if (!json.success) throw new Error(json.message);
+
+        alert('บันทึกการปรับคะแนนสำเร็จเรียบร้อย!');
+        document.getElementById('mobileAdjustForm').reset();
+        document.getElementById('photoLabel').innerText = 'แตะเพื่อถ่ายรูป / แนบหลักฐาน';
+      } catch (err) {
+        alert('เกิดข้อผิดพลาด: ' + err.message);
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+{
+  "name": "Warelio KPI & Scoring",
+  "short_name": "Warelio KPI",
+  "description": "ระบบคะแนนพนักงานและประเมินผลงาน KPI Warelio",
+  "start_url": "/mobile.html",
+  "display": "standalone",
+  "background_color": "#F8FAFC",
+  "theme_color": "#4F46E5",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3135/3135715.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3135/3135715.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
