@@ -397,7 +397,7 @@
         </div>
       </section>
 
-      <!-- View 6: จุดจ่ายงานยาก & คุณสมบัติพิเศษ (Difficult Station Bonus) -->
+      <!-- View 6: จุดจ่ายงานยาก & คุณสมบัติพิเศษ (Difficult Station Bonus & Monthly Team Station Roster) -->
       <section id="viewStations" style="display: none;">
 
         <!-- Top Info Header Card -->
@@ -405,67 +405,132 @@
           <div>
             <h2 style="font-size: 16px; font-weight: 700; color: #0F172A; margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
               <i class="fa-solid fa-briefcase" style="color: #2563EB;"></i>
-              เกณฑ์คะแนนพิเศษ: ประจำจุดจ่ายงานยากและทักษะเฉพาะทาง
+              กำหนดจุดจ่ายงานพนักงานประจำเดือน & เกณฑ์คะแนนพิเศษจุดงานยาก
             </h2>
             <p style="font-size: 12.5px; color: #64748B; margin: 0;">
-              กำหนดคะแนนบวกอัตโนมัติให้แก่พนักงานที่ปฏิบัติงานในจุดที่มีความซับซ้อนสูง (เช่น E Picking, SR, Piece Picking) ตามรอบเดือนหรือรอบประเมิน
+              บันทึกจุดจ่ายงานให้พนักงานในทีมทุกคนรายเดือน หากตรงกับเกณฑ์จุดงานยากระบบจะบวกคะแนนให้อัตโนมัติ (หรือเลือกเทียบเกณฑ์จาก Dropdown ได้ทันที) พร้อมเก็บประวัติย้อนหลังรายบุคคล
             </p>
           </div>
-          <div style="display: flex; gap: 8px;">
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
             <button class="btn btn-secondary" onclick="openAddStationModal()">
               <i class="fa-solid fa-gear"></i> ตั้งค่าเกณฑ์จุดงานยาก
             </button>
-            <button class="btn btn-primary" onclick="openAssignStationModal()">
-              <i class="fa-solid fa-user-plus"></i> กำหนดพนักงานประจำจุด
+            <button class="btn btn-primary" onclick="saveAllStationRosterChanges()" id="btnSaveAllStationRosterTop">
+              <i class="fa-solid fa-floppy-disk"></i> บันทึกข้อมูลจุดจ่ายทั้งหมด
             </button>
           </div>
         </div>
 
         <!-- Section A: Station Point Configs Overview Cards -->
         <div
-          style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-bottom: 16px;"
+          style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; margin-bottom: 16px;"
           id="stationCardsContainer">
           <!-- Dynamically populated station cards -->
         </div>
 
-        <!-- Section B: Assigned Employees Table -->
+        <!-- Autocomplete Datalist for Station Free-Text Inputs -->
+        <datalist id="stationSuggestionsDatalist"></datalist>
+
+        <!-- Section B: Team Monthly Station Roster Table -->
         <div class="card">
-          <div class="card-header">
-            <div>
-              <h3 class="card-title">รายชื่อพนักงานที่ได้รับคะแนนบวกประจำจุดงานยาก</h3>
-              <p class="table-subtitle">พนักงานในตารางนี้จะได้รับการคำนวณคะแนนพิเศษอัตโนมัติในรอบปัจจุบัน</p>
-            </div>
-            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-              <div style="position: relative;">
-                <i class="fa-solid fa-magnifying-glass"
-                  style="position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: #94A3B8; font-size: 12.5px;"></i>
-                <input type="text" id="stationAssignSearchInput" class="form-control"
-                  placeholder="ค้นหารหัส, ชื่อ, แผนก..." oninput="filterStationAssignments()"
-                  style="padding-left: 32px; font-size: 12.5px; width: 210px;">
+          <div class="card-header" style="flex-direction: column; align-items: stretch; gap: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
+              <div>
+                <h3 class="card-title" style="display: flex; align-items: center; gap: 8px;">
+                  ตารางกำหนดจุดจ่ายงานพนักงานในทีม (รายเดือน)
+                  <span class="badge badge-grade-B" id="stationRosterMonthBadge" style="font-size: 12px;">-</span>
+                </h3>
+                <p class="table-subtitle" id="stationRosterSubtitle">
+                  พิมพ์ชื่อจุดจ่ายงานของพนักงานแต่ละคน (ถ้าตรงกับเกณฑ์จุดงานยากระบบจะจับคู่ให้อัตโนมัติ หรือเลือกเองจากช่องเทียบเกณฑ์ได้)
+                </p>
               </div>
-              <select class="custom-select" id="stationFilterSelect" onchange="filterStationAssignments()"
-                style="font-size: 12.5px; width: 180px;">
-                <option value="ALL">ทุกจุดงานยาก</option>
-              </select>
-              <button class="btn btn-primary" onclick="openAssignStationModal()">
-                <i class="fa-solid fa-user-plus"></i> เพิ่มพนักงาน
-              </button>
+
+              <!-- Quick Summary Counters -->
+              <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 12px; font-size: 12px;">
+                  พนักงานในทีม: <strong style="color: #0F172A;" id="stCountTotal">0</strong> คน
+                </div>
+                <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 6px; padding: 6px 12px; font-size: 12px;">
+                  ระบุจุดจ่ายแล้ว: <strong style="color: #1D4ED8;" id="stCountAssigned">0</strong> คน
+                </div>
+                <div style="background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 6px; padding: 6px 12px; font-size: 12px;">
+                  ได้คะแนนจุดงานยาก: <strong style="color: #047857;" id="stCountBonus">0</strong> คน
+                </div>
+                <div style="background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 6px; padding: 6px 12px; font-size: 12px;">
+                  ยังไม่ระบุ: <strong style="color: #B45309;" id="stCountUnassigned">0</strong> คน
+                </div>
+              </div>
+            </div>
+
+            <!-- Controls & Filters Toolbar -->
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; padding-top: 10px; border-top: 1px solid #F1F5F9;">
+              <!-- Left Filters -->
+              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <label for="stationRosterMonth" style="font-size: 12.5px; font-weight: 600; color: #334155; white-space: nowrap;">เดือน:</label>
+                  <input type="month" id="stationRosterMonth" class="form-control"
+                    style="font-size: 12.5px; font-weight: 600; width: 155px; padding: 6px 10px;"
+                    onchange="loadStationRoster()">
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <label for="stationDeptFilterSelect" style="font-size: 12.5px; font-weight: 600; color: #334155; white-space: nowrap;">แผนก:</label>
+                  <select class="custom-select" id="stationDeptFilterSelect" onchange="loadStationRoster()"
+                    style="font-size: 12.5px; width: 150px;">
+                    <option value="ALL">ทุกแผนก (ทั้งหมด)</option>
+                  </select>
+                </div>
+
+                <select class="custom-select" id="stationStatusFilterSelect" onchange="filterStationRosterTable()"
+                  style="font-size: 12.5px; width: 185px;">
+                  <option value="ALL">สถานะจุดจ่าย: ทั้งหมด</option>
+                  <option value="BONUS">ได้คะแนนจุดงานยาก (+แต้ม)</option>
+                  <option value="NORMAL">จุดจ่ายทั่วไป (0 แต้ม)</option>
+                  <option value="ASSIGNED">ระบุจุดจ่ายแล้วทั้งหมด</option>
+                  <option value="UNASSIGNED">ยังไม่ระบุจุดจ่าย</option>
+                </select>
+
+                <div style="position: relative;">
+                  <i class="fa-solid fa-magnifying-glass"
+                    style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #94A3B8; font-size: 12px;"></i>
+                  <input type="text" id="stationAssignSearchInput" class="form-control"
+                    placeholder="ค้นหารหัส, ชื่อ, จุดจ่าย..." oninput="filterStationRosterTable()"
+                    style="padding-left: 30px; font-size: 12.5px; width: 190px;">
+                </div>
+              </div>
+
+              <!-- Right Action Buttons -->
+              <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                <button type="button" class="btn btn-sm btn-secondary" onclick="copyPreviousMonthRoster()" title="คัดลอกรายชื่อและจุดจ่ายงานจากเดือนก่อนหน้า">
+                  <i class="fa-regular fa-copy"></i> คัดลอกจากเดือนก่อน
+                </button>
+                <button type="button" class="btn btn-sm btn-secondary" onclick="exportStationRosterExcel()">
+                  <i class="fa-solid fa-file-excel" style="color: #059669;"></i> ส่งออก Excel
+                </button>
+                <button type="button" class="btn btn-sm btn-secondary" onclick="triggerImportStationRoster()">
+                  <i class="fa-solid fa-file-import" style="color: #2563EB;"></i> นำเข้า Excel
+                </button>
+                <input type="file" id="stationRosterFileInput" accept=".xlsx,.xls" style="display: none;"
+                  onchange="handleStationRosterFileImport(event)">
+                <button type="button" class="btn btn-sm btn-primary" onclick="saveAllStationRosterChanges()" id="btnSaveAllStationRoster">
+                  <i class="fa-solid fa-floppy-disk"></i> บันทึกทั้งหมด (<span id="stationDirtyCountBadge">0</span>)
+                </button>
+              </div>
             </div>
           </div>
+
           <div style="overflow-x: auto;">
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>รหัสพนักงาน</th>
-                  <th>ชื่อ-นามสกุล</th>
-                  <th>แผนก / ตำแหน่ง</th>
-                  <th>จุดงานยากที่ประจำ</th>
-                  <th>รอบเดือนที่คิดคะแนน</th>
-                  <th class="text-right">แต้มบวกต่อเดือน</th>
-                  <th class="text-right">แต้มสะสมในรอบนี้</th>
-                  <th>ผู้บันทึก</th>
-                  <th>หมายเหตุ</th>
-                  <th class="text-right">จัดการ</th>
+                  <th style="width: 95px;">รหัสพนักงาน</th>
+                  <th style="min-width: 150px;">ชื่อ-นามสกุล</th>
+                  <th style="min-width: 120px;">แผนก / ตำแหน่ง</th>
+                  <th style="min-width: 210px;">จุดจ่ายงานที่ประจำ (พิมพ์ชื่อจุดจ่าย)</th>
+                  <th style="min-width: 210px;">เทียบเกณฑ์จุดงานยาก (Auto / เลือกเอง)</th>
+                  <th class="text-right" style="width: 115px;">คะแนนเดือนนี้</th>
+                  <th style="min-width: 150px;">หมายเหตุ</th>
+                  <th class="text-right" style="min-width: 165px;">ประวัติสะสม & จัดการ</th>
                 </tr>
               </thead>
               <tbody id="stationAssignmentsTableBody">
@@ -1176,6 +1241,72 @@
     </div>
   </div>
 
+  <!-- Modal: Individual Employee Station History across Months -->
+  <div class="modal-overlay" id="empStationHistoryModal">
+    <div class="modal-container" style="max-width: 720px;">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title" id="empStationHistoryModalTitle">ประวัติจุดจ่ายงานย้อนหลังรายบุคคล</h3>
+          <p style="font-size: 12px; color: #64748B; margin: 2px 0 0 0;" id="empStationHistoryModalSubtitle">-</p>
+        </div>
+        <button class="btn-close" onclick="closeEmpStationHistoryModal()">&times;</button>
+      </div>
+
+      <!-- Quick Add/Edit Station for Any Month inside History Modal -->
+      <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 12px 14px; margin-bottom: 14px;">
+        <div style="font-size: 12.5px; font-weight: 600; color: #0F172A; margin-bottom: 8px;">
+          <i class="fa-solid fa-calendar-plus" style="color: #2563EB;"></i> บันทึก / แก้ไขจุดจ่ายงานย้อนหลังหรือล่วงหน้า
+        </div>
+        <div style="display: grid; grid-template-columns: 140px 1fr 1fr auto; gap: 8px; align-items: end;">
+          <div>
+            <label style="font-size: 11.5px; color: #475569; font-weight: 600; display: block; margin-bottom: 3px;">เดือน (YYYY-MM)</label>
+            <input type="month" id="histQuickMonth" class="form-control" style="font-size: 12.5px; padding: 6px 8px;">
+          </div>
+          <div>
+            <label style="font-size: 11.5px; color: #475569; font-weight: 600; display: block; margin-bottom: 3px;">ชื่อจุดจ่ายงานที่ประจำ</label>
+            <input type="text" id="histQuickStationText" class="form-control" list="stationSuggestionsDatalist"
+              placeholder="พิมพ์ชื่อจุดจ่าย..." style="font-size: 12.5px; padding: 6px 10px;"
+              oninput="onHistQuickStationTextChanged()">
+          </div>
+          <div>
+            <label style="font-size: 11.5px; color: #475569; font-weight: 600; display: block; margin-bottom: 3px;">เทียบเกณฑ์จุดงานยาก</label>
+            <select id="histQuickStationCode" class="form-control" style="font-size: 12.5px; padding: 6px 8px;"
+              onchange="onHistQuickStationCodeChanged()">
+              <option value="">จุดจ่ายทั่วไป (0 แต้ม)</option>
+            </select>
+          </div>
+          <div>
+            <button type="button" class="btn btn-primary" style="padding: 7px 14px; font-size: 12.5px;" onclick="saveHistQuickStation()">
+              <i class="fa-solid fa-check"></i> บันทึก
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div style="max-height: 360px; overflow-y: auto; border: 1px solid #E2E8F0; border-radius: 6px;">
+        <table class="data-table" style="margin: 0;">
+          <thead>
+            <tr>
+              <th style="width: 120px;">เดือน (YYYY-MM)</th>
+              <th>จุดจ่ายงานที่ประจำ</th>
+              <th>เกณฑ์จุดงานยาก</th>
+              <th class="text-right">คะแนนพิเศษ</th>
+              <th>ผู้บันทึก / วันที่</th>
+              <th class="text-right">จัดการ</th>
+            </tr>
+          </thead>
+          <tbody id="empStationHistoryTableBody">
+            <!-- Dynamically populated -->
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border);">
+        <button type="button" class="btn btn-secondary" onclick="closeEmpStationHistoryModal()">ปิดหน้าต่าง</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: Station Config Modal (Add/Edit Difficult Station) -->
   <div class="modal-overlay" id="stationConfigModal">
     <div class="modal-container" style="max-width: 460px;">
@@ -1325,7 +1456,7 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=20261029_pro"></script>
+  <script src="js/app.js?v=20261029_stations"></script>
 </body>
 
 </html>

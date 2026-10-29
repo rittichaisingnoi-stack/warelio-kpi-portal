@@ -133,6 +133,8 @@ class CloudSyncService {
       await cloudPool.query(`SELECT 1 as ok;`);
       await cloudPool.query(`ALTER TABLE kpi_score_transactions ALTER COLUMN attachment_url TYPE TEXT;`).catch(() => {});
       await pool.query(`ALTER TABLE kpi_score_transactions ALTER COLUMN attachment_url TYPE TEXT;`).catch(() => {});
+      await scoringEngine.ensureStationAssignmentSchema(cloudPool);
+      await scoringEngine.ensureStationAssignmentSchema(pool);
       return;
     }
     const sqlPath = path.join(__dirname, '..', 'deploy_supabase_migrations.sql');
@@ -142,6 +144,8 @@ class CloudSyncService {
     }
     await cloudPool.query(`ALTER TABLE kpi_score_transactions ALTER COLUMN attachment_url TYPE TEXT;`).catch(() => {});
     await pool.query(`ALTER TABLE kpi_score_transactions ALTER COLUMN attachment_url TYPE TEXT;`).catch(() => {});
+    await scoringEngine.ensureStationAssignmentSchema(cloudPool);
+    await scoringEngine.ensureStationAssignmentSchema(pool);
   }
 
   /**
@@ -241,20 +245,20 @@ class CloudSyncService {
         if (r.rowCount > 0) stats.pulled_transactions += r.rowCount;
       }
 
-      // ดึงการมอบหมายจุดงานยาก (ถ้ามีการเพิ่มจากฝั่ง Cloud)
+      // ดึงการมอบหมายจุดจ่ายงานและจุดงานยาก (ถ้ามีการเพิ่มจากฝั่ง Cloud)
       const cloudAssignRes = await cloudPool.query(`
-        SELECT period_id, em_code, station_code, assigned_month, assigned_by, remark,
+        SELECT period_id, em_code, station_name_text, station_code, assigned_month, assigned_by, remark,
                TO_CHAR(assigned_date, 'YYYY-MM-DD') as assigned_date, created_at
         FROM kpi_employee_station_assignments;
       `);
       for (const a of cloudAssignRes.rows) {
         const r = await pool.query(`
           INSERT INTO kpi_employee_station_assignments (
-            period_id, em_code, station_code, assigned_month, assigned_by, remark, assigned_date, created_at
+            period_id, em_code, station_name_text, station_code, assigned_month, assigned_by, remark, assigned_date, created_at
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-          ON CONFLICT (period_id, em_code, station_code, assigned_month) DO NOTHING;
-        `, [a.period_id, a.em_code, a.station_code, a.assigned_month || 'ALL', a.assigned_by, a.remark, a.assigned_date, a.created_at]);
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          ON CONFLICT (period_id, em_code, assigned_month) DO NOTHING;
+        `, [a.period_id, a.em_code, a.station_name_text || a.station_code || null, a.station_code || null, a.assigned_month || 'ALL', a.assigned_by, a.remark, a.assigned_date, a.created_at]);
         if (r.rowCount > 0) stats.pulled_station_assignments += r.rowCount;
       }
 
@@ -486,18 +490,20 @@ class CloudSyncService {
       }
 
       const stAssRes = await pool.query(`
-        SELECT period_id, em_code, station_code, assigned_month, assigned_by, remark,
+        SELECT period_id, em_code, station_name_text, station_code, assigned_month, assigned_by, remark,
                TO_CHAR(assigned_date, 'YYYY-MM-DD') as assigned_date, created_at
         FROM kpi_employee_station_assignments;
       `);
       for (const sa of stAssRes.rows) {
         await cloudPool.query(`
-          INSERT INTO kpi_employee_station_assignments (period_id, em_code, station_code, assigned_month, assigned_by, remark, assigned_date, created_at)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-          ON CONFLICT (period_id, em_code, station_code, assigned_month) DO UPDATE SET
+          INSERT INTO kpi_employee_station_assignments (period_id, em_code, station_name_text, station_code, assigned_month, assigned_by, remark, assigned_date, created_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          ON CONFLICT (period_id, em_code, assigned_month) DO UPDATE SET
+            station_name_text = EXCLUDED.station_name_text,
+            station_code = EXCLUDED.station_code,
             assigned_by = EXCLUDED.assigned_by,
             remark = EXCLUDED.remark;
-        `, [sa.period_id, sa.em_code, sa.station_code, sa.assigned_month || 'ALL', sa.assigned_by, sa.remark, sa.assigned_date, sa.created_at]);
+        `, [sa.period_id, sa.em_code, sa.station_name_text || sa.station_code || null, sa.station_code || null, sa.assigned_month || 'ALL', sa.assigned_by, sa.remark, sa.assigned_date, sa.created_at]);
       }
 
       // 3.7 ซิงค์ประวัติการปรับคะแนนทั้งหมดขึ้น Cloud (kpi_score_transactions) แบบ Batch Chunk

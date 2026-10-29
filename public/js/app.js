@@ -178,6 +178,9 @@ async function handleDesktopLogin(event) {
     updateModalSupervisorBar();
     populateEmpDropdown();
     onAdjustEmpSelected();
+    if (document.getElementById('viewStations')?.style.display !== 'none') {
+      loadStationsData();
+    }
   } catch (err) {
     btn.disabled = false;
     btn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> เข้าสู่ระบบ';
@@ -1843,19 +1846,110 @@ async function saveGradeSettings(event) {
 }
 
 // ==============================================================================
-// 8. จุดจ่ายงานยาก & สกิลพิเศษ (Difficult Station Bonus)
+// 8. จุดจ่ายงานยาก & ตารางกำหนดจุดจ่ายงานพนักงานประจำเดือน (Team Station Roster & History)
 // ==============================================================================
 let allStationConfigs = [];
 let allStationAssignments = [];
 let currentPeriodMonthsElapsed = 1;
+let stationRosterList = [];
+let stationRosterDirtyMap = {};
+let stationAllDepartments = [];
+let currentHistoryModalEmCode = null;
+
+function getDefaultStationMonthStr() {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  return `${yyyy}-${mm}`;
+}
+
+function formatThaiMonthYearLabel(ym) {
+  if (!ym || ym === 'ALL') return 'รอบประจำทุกเดือน';
+  const parts = String(ym).split('-');
+  if (parts.length !== 2) return ym;
+  const thaiMonths = [
+    'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+    'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
+  ];
+  const mIdx = parseInt(parts[1], 10) - 1;
+  const mName = thaiMonths[mIdx] || parts[1];
+  return `${mName} ${parts[0]} (${ym})`;
+}
+
+function escapeHtmlAttr(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function matchStationConfigClient(rawText) {
+  const text = String(rawText || '').trim();
+  if (!text) return '';
+
+  const norm = (s) => String(s || '').trim().toLowerCase().replace(/[\s_\-]+/g, '');
+  const normInput = norm(text);
+  if (!normInput) return '';
+
+  const activeConfigs = (allStationConfigs || []).filter(c => c && c.is_active !== false);
+
+  // 1. Exact normalized match
+  for (const c of activeConfigs) {
+    const normCode = norm(c.station_code);
+    const normName = norm(c.station_name);
+    const baseName = String(c.station_name || '').split('(')[0].trim();
+    const normBase = norm(baseName);
+    const parenMatch = String(c.station_name || '').match(/\(([^)]+)\)/);
+    const normParen = parenMatch ? norm(parenMatch[1]) : '';
+
+    if (
+      normInput === normCode ||
+      normInput === normName ||
+      (normBase && normInput === normBase) ||
+      (normParen && normInput === normParen)
+    ) {
+      return c.station_code;
+    }
+  }
+
+  // 2. Partial / token match
+  for (const c of activeConfigs) {
+    const codeRaw = String(c.station_code || '').trim();
+    const baseName = String(c.station_name || '').split('(')[0].trim();
+    const normCode = norm(codeRaw);
+    const normBase = norm(baseName);
+
+    if (normBase && normBase.length >= 4 && normInput.includes(normBase)) {
+      return c.station_code;
+    }
+    if (normCode && normCode.length >= 4 && normInput.includes(normCode)) {
+      return c.station_code;
+    }
+    if (codeRaw && codeRaw.length >= 2) {
+      const escaped = codeRaw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const wordRegex = new RegExp(`(^|[^a-zA-Z0-9])${escaped}($|[^a-zA-Z0-9])`, 'i');
+      if (wordRegex.test(text)) {
+        return c.station_code;
+      }
+    }
+  }
+
+  return '';
+}
 
 async function loadStationsData() {
-  await Promise.all([loadStationConfigs(), loadStationAssignments()]);
+  const monthInput = document.getElementById('stationRosterMonth');
+  if (monthInput && !monthInput.value) {
+    monthInput.value = getDefaultStationMonthStr();
+  }
+  await loadStationRoster();
 }
 
 async function loadStationConfigs() {
   try {
-    const res = await fetch('/api/kpi/stations');
+    const monthVal = document.getElementById('stationRosterMonth')?.value || getDefaultStationMonthStr();
+    const res = await fetch(`/api/kpi/stations?month=${encodeURIComponent(monthVal)}`);
     const json = await res.json();
     if (!json.success) return;
     allStationConfigs = json.stations || [];
@@ -1866,12 +1960,120 @@ async function loadStationConfigs() {
   }
 }
 
+async function loadStationRoster() {
+  try {
+    const monthInput = document.getElementById('stationRosterMonth');
+    if (monthInput && !monthInput.value) {
+      monthInput.value = getDefaultStationMonthStr();
+    }
+    const selectedMonth = monthInput ? monthInput.value : getDefaultStationMonthStr();
+    const deptSelect = document.getElementById('stationDeptFilterSelect');
+    let selectedDept = deptSelect ? deptSelect.value : 'ALL';
+
+    if (desktopCurrentUser && !isAdminRole(desktopCurrentUser)) {
+      const userDept = String(desktopCurrentUser.dept || desktopCurrentUser.team || desktopCurrentUser.grp || '').trim();
+      selectedDept = (userDept && userDept !== '-') ? userDept : '__NONE__';
+    }
+
+    const username = desktopCurrentUser ? (desktopCurrentUser.username || '') : '';
+    const url = `/api/kpi/station-roster?month=${encodeURIComponent(selectedMonth)}&dept=${encodeURIComponent(selectedDept)}&username=${encodeURIComponent(username)}`;
+    const res = await fetch(url);
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message);
+
+    allStationConfigs = json.stations || [];
+    stationRosterList = json.roster || [];
+    stationAllDepartments = json.departments || [];
+    stationRosterDirtyMap = {};
+    updateStationDirtyBadge();
+
+    // Update Month Badge
+    const monthBadge = document.getElementById('stationRosterMonthBadge');
+    if (monthBadge) {
+      monthBadge.innerText = `ประจำเดือน ${formatThaiMonthYearLabel(selectedMonth)}`;
+    }
+
+    // Update Department Dropdown based on Role
+    if (deptSelect) {
+      if (desktopCurrentUser && !isAdminRole(desktopCurrentUser)) {
+        const userDept = String(desktopCurrentUser.dept || desktopCurrentUser.team || desktopCurrentUser.grp || '-').trim();
+        deptSelect.innerHTML = `<option value="${escapeHtmlAttr(userDept)}">แผนกของคุณ: ${userDept}</option>`;
+        deptSelect.value = userDept;
+        deptSelect.disabled = true;
+      } else {
+        deptSelect.disabled = false;
+        const prevVal = json.effective_dept || selectedDept || 'ALL';
+        deptSelect.innerHTML = '<option value="ALL">ทุกแผนก (ทั้งหมด)</option>';
+        stationAllDepartments.forEach(d => {
+          const opt = document.createElement('option');
+          opt.value = d;
+          opt.innerText = `แผนก: ${d}`;
+          deptSelect.appendChild(opt);
+        });
+        if ([...deptSelect.options].some(o => o.value === prevVal)) {
+          deptSelect.value = prevVal;
+        }
+      }
+    }
+
+    // Update Datalist Suggestions for Free-Text Station Input
+    const datalist = document.getElementById('stationSuggestionsDatalist');
+    if (datalist) {
+      const suggestions = json.station_suggestions || [];
+      datalist.innerHTML = suggestions.map(s => `<option value="${escapeHtmlAttr(s)}"></option>`).join('');
+    }
+
+    renderStationCards();
+    populateStationDropdowns();
+    updateStationRosterCounters();
+    filterStationRosterTable();
+  } catch (err) {
+    console.error('Error loading station roster:', err);
+  }
+}
+
+function updateStationRosterCounters() {
+  let total = stationRosterList.length;
+  let assigned = 0;
+  let bonus = 0;
+
+  stationRosterList.forEach(r => {
+    const dirty = stationRosterDirtyMap[r.em_code];
+    const stText = dirty !== undefined ? dirty.station_name_text : (r.station_name_text || '');
+    const stCode = dirty !== undefined ? dirty.station_code : (r.station_code || '');
+    const cfg = stCode ? allStationConfigs.find(c => c.station_code === stCode && c.is_active !== false) : null;
+    const pts = cfg ? parseFloat(cfg.bonus_points || 0) : 0;
+
+    if ((stText && stText.trim()) || stCode) {
+      assigned++;
+      if (pts > 0) bonus++;
+    }
+  });
+
+  const unassigned = Math.max(0, total - assigned);
+  const elTotal = document.getElementById('stCountTotal');
+  const elAssigned = document.getElementById('stCountAssigned');
+  const elBonus = document.getElementById('stCountBonus');
+  const elUnassigned = document.getElementById('stCountUnassigned');
+
+  if (elTotal) elTotal.innerText = total;
+  if (elAssigned) elAssigned.innerText = assigned;
+  if (elBonus) elBonus.innerText = bonus;
+  if (elUnassigned) elUnassigned.innerText = unassigned;
+}
+
+function updateStationDirtyBadge() {
+  const dirtyCount = Object.keys(stationRosterDirtyMap).length;
+  const badge = document.getElementById('stationDirtyCountBadge');
+  if (badge) badge.innerText = dirtyCount;
+}
+
 function renderStationCards() {
   const container = document.getElementById('stationCardsContainer');
   if (!container) return;
 
   if (allStationConfigs.length === 0) {
-    container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: #94A3B8; padding: 20px;">ยังไม่มีการตั้งค่าจุดงานยาก</div>`;
+    container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: #94A3B8; padding: 20px;">ยังไม่มีการตั้งค่าเกณฑ์จุดงานยาก</div>`;
     return;
   }
 
@@ -1885,19 +2087,19 @@ function renderStationCards() {
       : '<span class="badge badge-grade-D">ปิดใช้งาน</span>';
 
     return `
-      <div class="card" style="padding: 16px 18px; border-left: 3px solid #2563EB; display: flex; flex-direction: column; justify-content: space-between;">
+      <div class="card" style="padding: 14px 16px; border-left: 3px solid #2563EB; display: flex; flex-direction: column; justify-content: space-between;">
         <div>
-          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
             <div>
               <span class="font-mono" style="font-size: 11px; font-weight: 600; color: #64748B; text-transform: uppercase;">${s.station_code}</span>
-              <h4 style="font-size: 14.5px; font-weight: 700; color: #0F172A; margin: 2px 0 0 0;">${s.station_name}</h4>
+              <h4 style="font-size: 14px; font-weight: 700; color: #0F172A; margin: 2px 0 0 0;">${s.station_name}</h4>
             </div>
             ${statusBadge}
           </div>
-          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 12px; margin: 10px 0;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
+          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 7px 10px; margin: 8px 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
               <span style="font-size: 12px; color: #64748B;">แต้มบวกอัตโนมัติ:</span>
-              <strong style="font-size: 14px; color: #059669;">${ptsText}</strong>
+              <strong style="font-size: 13.5px; color: #059669;">${ptsText}</strong>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; color: #64748B;">
               <span>ความถี่:</span>
@@ -1905,9 +2107,9 @@ function renderStationCards() {
             </div>
           </div>
         </div>
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; padding-top: 10px; border-top: 1px solid #F1F5F9;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 8px; border-top: 1px solid #F1F5F9;">
           <span style="font-size: 12px; color: #64748B;">
-            พนักงานประจำจุด: <strong style="color: #0F172A;">${s.assigned_count || 0}</strong> คน
+            พนักงานในเดือนนี้: <strong style="color: #0F172A;">${s.assigned_count || 0}</strong> คน
           </span>
           <div style="display: flex; gap: 6px;">
             <button class="btn btn-sm btn-secondary" onclick="openEditStationModal('${s.station_code}')" title="แก้ไขการตั้งค่า">
@@ -1924,91 +2126,149 @@ function renderStationCards() {
 }
 
 function populateStationDropdowns() {
-  const filterSelect = document.getElementById('stationFilterSelect');
-  const assignSelect = document.getElementById('assignStationCodeSelect');
-
-  if (filterSelect) {
-    const currentVal = filterSelect.value;
-    filterSelect.innerHTML = '<option value="ALL">ทุกจุดงานยาก</option>';
-    allStationConfigs.forEach(s => {
+  const histSelect = document.getElementById('histQuickStationCode');
+  if (histSelect) {
+    const curVal = histSelect.value;
+    histSelect.innerHTML = '<option value="">จุดจ่ายทั่วไป (0 แต้ม)</option>';
+    allStationConfigs.filter(s => s.is_active !== false).forEach(s => {
       const opt = document.createElement('option');
       opt.value = s.station_code;
-      opt.innerText = `${s.station_name} (+${s.bonus_points} แต้ม/เดือน)`;
-      filterSelect.appendChild(opt);
+      opt.innerText = `${s.station_name} (+${parseFloat(s.bonus_points).toFixed(1)} แต้ม)`;
+      histSelect.appendChild(opt);
     });
-    if (currentVal) filterSelect.value = currentVal;
-  }
-
-  if (assignSelect) {
-    assignSelect.innerHTML = '<option value="">-- กรุณาเลือกจุดจ่ายงานยาก --</option>';
-    allStationConfigs.forEach(s => {
-      const opt = document.createElement('option');
-      opt.value = s.station_code;
-      opt.dataset.points = s.bonus_points;
-      opt.dataset.frequency = s.bonus_frequency;
-      opt.innerText = `${s.station_name} (+${s.bonus_points} แต้ม/เดือน)`;
-      assignSelect.appendChild(opt);
-    });
+    if (curVal) histSelect.value = curVal;
   }
 }
 
-async function loadStationAssignments() {
-  try {
-    const res = await fetch('/api/kpi/station-assignments');
-    const json = await res.json();
-    if (!json.success) return;
-    allStationAssignments = json.assignments || [];
-    currentPeriodMonthsElapsed = json.period_months_elapsed || 1;
-    renderStationAssignmentsTable(allStationAssignments);
-  } catch (err) {
-    console.error('Error loading station assignments:', err);
-  }
+function filterStationRosterTable() {
+  const query = (document.getElementById('stationAssignSearchInput')?.value || '').trim().toLowerCase();
+  const statusFilter = document.getElementById('stationStatusFilterSelect')?.value || 'ALL';
+
+  const filtered = stationRosterList.filter(r => {
+    const dirty = stationRosterDirtyMap[r.em_code];
+    const stText = dirty !== undefined ? dirty.station_name_text : (r.station_name_text || '');
+    const stCode = dirty !== undefined ? dirty.station_code : (r.station_code || '');
+    const remark = dirty !== undefined ? dirty.remark : (r.remark || '');
+    const cfg = stCode ? allStationConfigs.find(c => c.station_code === stCode && c.is_active !== false) : null;
+    const pts = cfg ? parseFloat(cfg.bonus_points || 0) : 0;
+    const hasStation = Boolean((stText && stText.trim()) || stCode);
+
+    if (statusFilter === 'BONUS' && !(hasStation && pts > 0)) return false;
+    if (statusFilter === 'NORMAL' && !(hasStation && pts === 0)) return false;
+    if (statusFilter === 'ASSIGNED' && !hasStation) return false;
+    if (statusFilter === 'UNASSIGNED' && hasStation) return false;
+
+    if (query) {
+      const matchQuery =
+        (r.em_code || '').toLowerCase().includes(query) ||
+        (r.name_th || '').toLowerCase().includes(query) ||
+        (r.dept || '').toLowerCase().includes(query) ||
+        (r.position_name || '').toLowerCase().includes(query) ||
+        stText.toLowerCase().includes(query) ||
+        stCode.toLowerCase().includes(query) ||
+        remark.toLowerCase().includes(query);
+      if (!matchQuery) return false;
+    }
+
+    return true;
+  });
+
+  renderStationRosterTable(filtered);
 }
 
-function renderStationAssignmentsTable(list) {
+function renderStationRosterTable(list) {
   const tbody = document.getElementById('stationAssignmentsTableBody');
   if (!tbody) return;
 
-  if (list.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="10" style="text-align: center; color: #94A3B8; padding: 30px;">ยังไม่มีรายชื่อพนักงานประจำจุดจ่ายงานยากในรอบนี้</td></tr>`;
+  if (!list || list.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: #94A3B8; padding: 32px;">ไม่พบรายชื่อพนักงานตามเงื่อนไขที่เลือก</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = list.map(a => {
-    const pts = parseFloat(a.bonus_points).toFixed(1);
-    const isAllMonths = (!a.assigned_month || a.assigned_month === 'ALL');
-    const cycleBadge = isAllMonths 
-      ? `<span class="badge" style="background: #ECFDF5; color: #065F46; font-weight: 600;"><i class="fa-solid fa-arrows-rotate"></i> ทุกเดือน (${currentPeriodMonthsElapsed} เดือน)</span>`
-      : `<span class="badge" style="background: #EFF6FF; color: #1D4ED8; font-weight: 600;"><i class="fa-solid fa-calendar-day"></i> เดือน ${a.assigned_month}</span>`;
-    
-    const totalPts = isAllMonths 
-      ? (parseFloat(a.bonus_points) * currentPeriodMonthsElapsed) 
-      : parseFloat(a.bonus_points);
+  const activeConfigs = allStationConfigs.filter(s => s.is_active !== false);
 
-    const assigner = a.assigner_name || a.assigned_by || '-';
-    const remark = a.remark || '-';
+  tbody.innerHTML = list.map(r => {
+    const dirty = stationRosterDirtyMap[r.em_code];
+    const isDirty = dirty !== undefined;
+    const stText = isDirty ? dirty.station_name_text : (r.station_name_text || '');
+    const stCode = isDirty ? dirty.station_code : (r.station_code || '');
+    const remark = isDirty ? dirty.remark : (r.remark || '');
+
+    const cfg = stCode ? activeConfigs.find(c => c.station_code === stCode) : null;
+    const pts = cfg ? parseFloat(cfg.bonus_points || 0) : 0;
+
+    const optionsHtml = [
+      `<option value="" ${!stCode ? 'selected' : ''}>-- จุดจ่ายทั่วไป (0 แต้ม) --</option>`,
+      ...activeConfigs.map(c => {
+        const sel = c.station_code === stCode ? 'selected' : '';
+        return `<option value="${escapeHtmlAttr(c.station_code)}" ${sel}>${escapeHtmlAttr(c.station_name)} (+${parseFloat(c.bonus_points).toFixed(1)})</option>`;
+      })
+    ].join('');
+
+    const ptsBadgeHtml = pts > 0
+      ? `<span class="badge badge-grade-A" id="stRowPts_${r.em_code}" style="font-size: 12.5px; font-weight: 700;">+${pts.toFixed(1)} แต้ม</span>`
+      : (stText.trim()
+          ? `<span class="badge badge-neutral" id="stRowPts_${r.em_code}" style="font-size: 12px;">0.0 แต้ม</span>`
+          : `<span class="badge" id="stRowPts_${r.em_code}" style="background: #F1F5F9; color: #94A3B8; font-size: 11.5px;">ยังไม่ระบุ</span>`);
+
+    const histMonths = r.history_months_count || 0;
+    const histBonus = parseFloat(r.history_total_bonus || 0);
+    const recentHint = (r.recent_stations && r.recent_stations.length > 0)
+      ? r.recent_stations.map(x => `${x.assigned_month}: ${x.station_name_text}`).join(' | ')
+      : 'ยังไม่มีประวัติจุดจ่ายงาน';
+
+    const rowBg = isDirty ? 'background: #FFFBEB;' : (pts > 0 ? 'background: #F0FDF4;' : '');
 
     return `
-      <tr>
-        <td class="font-mono" style="font-weight: 600; color: #1E293B;">${a.em_code}</td>
-        <td style="font-weight: 600;">${a.name_th}</td>
+      <tr id="stRow_${r.em_code}" style="${rowBg}">
+        <td class="font-mono" style="font-weight: 600; color: #1E293B;">${r.em_code}</td>
         <td>
-          <span class="badge badge-neutral">${a.dept || '-'}</span>
-          <div style="font-size: 11px; color: #64748B; margin-top: 2px;">${a.position_name || '-'}</div>
+          <div style="font-weight: 600; color: #0F172A;">${r.name_th || '-'}</div>
+          ${r.assigner_name ? `<div style="font-size: 11px; color: #64748B;">ผู้บันทึกล่าสุด: ${r.assigner_name}</div>` : ''}
         </td>
         <td>
-          <span class="badge badge-grade-B">${a.station_name}</span>
+          <span class="badge badge-neutral">${r.dept || '-'}</span>
+          <div style="font-size: 11px; color: #64748B; margin-top: 2px;">${r.position_name || '-'}</div>
         </td>
-        <td>${cycleBadge}</td>
-        <td class="text-right" style="color: #059669; font-weight: 600;">+${pts} แต้ม/ด.</td>
-        <td class="text-right">
-          <strong style="color: #047857; font-size: 13.5px;">+${totalPts.toFixed(1)} แต้ม</strong>
+        <td>
+          <input type="text" class="form-control" id="stInputText_${r.em_code}"
+            list="stationSuggestionsDatalist"
+            value="${escapeHtmlAttr(stText)}"
+            placeholder="พิมพ์จุดจ่าย เช่น E Picking, SR, Receiving..."
+            style="font-size: 12.5px; font-weight: 600; padding: 6px 10px;"
+            oninput="onRosterStationTextInput('${r.em_code}')">
         </td>
-        <td style="font-size: 12px; color: #64748B;">${assigner}</td>
-        <td style="font-size: 12px; color: #64748B; max-width: 180px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${remark}">${remark}</td>
+        <td>
+          <select class="form-control" id="stSelectCode_${r.em_code}"
+            style="font-size: 12.5px; font-weight: 600; padding: 6px 8px; ${stCode ? 'border-color: #10B981; color: #065F46; background: #ECFDF5;' : ''}"
+            onchange="onRosterStationCodeSelect('${r.em_code}')">
+            ${optionsHtml}
+          </select>
+        </td>
         <td class="text-right">
-          <button class="btn btn-sm btn-secondary" style="color: #DC2626;" onclick="deleteStationAssignment(${a.assignment_id}, '${a.name_th}', '${a.station_name}')" title="ยกเลิกการประจำจุดนี้">
-            <i class="fa-solid fa-user-minus"></i> ยกเลิก
+          ${ptsBadgeHtml}
+        </td>
+        <td>
+          <input type="text" class="form-control" id="stInputRemark_${r.em_code}"
+            value="${escapeHtmlAttr(remark)}"
+            placeholder="หมายเหตุ (ถ้ามี)"
+            style="font-size: 12px; padding: 6px 8px;"
+            oninput="onRosterRemarkInput('${r.em_code}')">
+        </td>
+        <td class="text-right" style="white-space: nowrap;">
+          <button type="button" class="btn btn-sm ${isDirty ? 'btn-primary' : 'btn-secondary'}"
+            id="stBtnSave_${r.em_code}"
+            onclick="saveSingleStationRosterRow('${r.em_code}')"
+            title="บันทึกจุดจ่ายของพนักงานคนนี้ทันที"
+            style="margin-right: 4px; padding: 5px 9px; font-size: 12px;">
+            <i class="fa-solid fa-check"></i> บันทึก
+          </button>
+          <button type="button" class="btn btn-sm btn-secondary"
+            onclick="openEmpStationHistoryModal('${r.em_code}')"
+            title="${escapeHtmlAttr(recentHint)}"
+            style="padding: 5px 9px; font-size: 12px;">
+            <i class="fa-solid fa-clock-rotate-left" style="color: #2563EB;"></i>
+            ประวัติ (${histMonths} ด.${histBonus > 0 ? ` / +${histBonus.toFixed(0)}` : ''})
           </button>
         </td>
       </tr>
@@ -2016,231 +2276,502 @@ function renderStationAssignmentsTable(list) {
   }).join('');
 }
 
-function filterStationAssignments() {
-  const query = (document.getElementById('stationAssignSearchInput')?.value || '').trim().toLowerCase();
-  const stationFilter = document.getElementById('stationFilterSelect')?.value || 'ALL';
+function onRosterStationTextInput(emCode) {
+  const textEl = document.getElementById(`stInputText_${emCode}`);
+  const selectEl = document.getElementById(`stSelectCode_${emCode}`);
+  const remarkEl = document.getElementById(`stInputRemark_${emCode}`);
+  if (!textEl || !selectEl) return;
 
-  const filtered = allStationAssignments.filter(a => {
-    const matchStation = (stationFilter === 'ALL' || a.station_code === stationFilter);
-    const matchQuery = !query || 
-      (a.em_code || '').toLowerCase().includes(query) ||
-      (a.name_th || '').toLowerCase().includes(query) ||
-      (a.dept || '').toLowerCase().includes(query) ||
-      (a.station_name || '').toLowerCase().includes(query) ||
-      (a.assigned_month || '').toLowerCase().includes(query);
-    return matchStation && matchQuery;
-  });
+  const rawText = textEl.value;
+  // Auto-match against difficult station configs as the user types
+  const matchedCode = matchStationConfigClient(rawText);
+  selectEl.value = matchedCode || '';
 
-  renderStationAssignmentsTable(filtered);
+  syncRosterRowVisualsAndDirtyState(emCode, rawText, selectEl.value, remarkEl ? remarkEl.value : '');
 }
 
-// Modal Assign Station
-function openAssignStationModal() {
-  if (allEmployeesMaster.length === 0) {
-    loadEmployees().then(() => populateAssignStationEmpDropdown());
+function onRosterStationCodeSelect(emCode) {
+  const textEl = document.getElementById(`stInputText_${emCode}`);
+  const selectEl = document.getElementById(`stSelectCode_${emCode}`);
+  const remarkEl = document.getElementById(`stInputRemark_${emCode}`);
+  if (!textEl || !selectEl) return;
+
+  const chosenCode = selectEl.value;
+  if (chosenCode && !textEl.value.trim()) {
+    const cfg = allStationConfigs.find(c => c.station_code === chosenCode);
+    if (cfg) {
+      textEl.value = cfg.station_name.split('(')[0].trim() || cfg.station_name;
+    }
+  }
+
+  syncRosterRowVisualsAndDirtyState(emCode, textEl.value, chosenCode, remarkEl ? remarkEl.value : '');
+}
+
+function onRosterRemarkInput(emCode) {
+  const textEl = document.getElementById(`stInputText_${emCode}`);
+  const selectEl = document.getElementById(`stSelectCode_${emCode}`);
+  const remarkEl = document.getElementById(`stInputRemark_${emCode}`);
+  if (!textEl || !selectEl) return;
+
+  syncRosterRowVisualsAndDirtyState(emCode, textEl.value, selectEl.value, remarkEl ? remarkEl.value : '');
+}
+
+function syncRosterRowVisualsAndDirtyState(emCode, stText, stCode, remark) {
+  const orig = stationRosterList.find(r => r.em_code === emCode);
+  const cleanText = String(stText || '').trim();
+  const cleanCode = String(stCode || '').trim();
+  const cleanRemark = String(remark || '').trim();
+
+  const isSameAsOrig = orig &&
+    String(orig.station_name_text || '').trim() === cleanText &&
+    String(orig.station_code || '').trim() === cleanCode &&
+    String(orig.remark || '').trim() === cleanRemark;
+
+  if (isSameAsOrig) {
+    delete stationRosterDirtyMap[emCode];
   } else {
-    populateAssignStationEmpDropdown();
+    stationRosterDirtyMap[emCode] = {
+      em_code: emCode,
+      station_name_text: cleanText,
+      station_code: cleanCode,
+      remark: cleanRemark
+    };
   }
 
-  const searchInput = document.getElementById('assignEmpSearchInput');
-  if (searchInput) searchInput.value = '';
-  const badge = document.getElementById('assignEmpDeptBadge');
-  if (badge) badge.style.display = 'none';
-  const remarkInput = document.getElementById('assignStationRemark');
-  if (remarkInput) remarkInput.value = '';
-
-  // Setup monthly cycle options
-  const monthSelect = document.getElementById('assignStationMonthSelect');
-  if (monthSelect) {
-    monthSelect.innerHTML = '<option value="ALL">🔄 รอบประจำทุกเดือน (สะสมทุกเดือนในรอบประเมิน)</option>';
-    const thaiMonths = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
-    const curYear = new Date().getFullYear();
-    for (let m = 1; m <= 12; m++) {
-      const mStr = m < 10 ? `0${m}` : `${m}`;
-      const val = `${curYear}-${mStr}`;
-      const opt = document.createElement('option');
-      opt.value = val;
-      opt.innerText = `📅 เฉพาะเดือน ${thaiMonths[m - 1]} ${curYear} (${val})`;
-      monthSelect.appendChild(opt);
-    }
-    monthSelect.value = 'ALL';
-  }
-
-  populateStationDropdowns();
-  onAssignStationCodeChanged();
-
-  document.getElementById('assignStationModal').classList.add('active');
-}
-
-function closeAssignStationModal() {
-  document.getElementById('assignStationModal').classList.remove('active');
-}
-
-function populateAssignStationEmpDropdown(filteredList = null) {
-  const select = document.getElementById('assignStationEmpSelect');
-  if (!select) return;
-  const list = filteredList !== null ? filteredList : allEmployeesMaster;
-
-  select.innerHTML = '<option value="">-- เลือกรหัส / ชื่อพนักงาน --</option>';
-  list.forEach(e => {
-    const opt = document.createElement('option');
-    opt.value = e.em_code;
-    const deptInfo = e.dept || '-';
-    const posInfo = e.position_name ? ` • ${e.position_name}` : '';
-    opt.innerText = `${e.em_code} - ${e.name_th} (${deptInfo}${posInfo})`;
-    select.appendChild(opt);
-  });
-}
-
-function filterAssignStationEmployees() {
-  const query = (document.getElementById('assignEmpSearchInput')?.value || '').trim().toLowerCase();
-  if (!query) {
-    populateAssignStationEmpDropdown(null);
-    return;
-  }
-  const filtered = allEmployeesMaster.filter(e => {
-    return (e.em_code || '').toLowerCase().includes(query) ||
-           (e.name_th || '').toLowerCase().includes(query) ||
-           (e.dept || '').toLowerCase().includes(query);
-  });
-  populateAssignStationEmpDropdown(filtered);
-}
-
-function onAssignStationEmpSelected() {
-  const select = document.getElementById('assignStationEmpSelect');
-  const badge = document.getElementById('assignEmpDeptBadge');
-  const btnSubmit = document.getElementById('btnSubmitAssignStation');
-
-  const emCode = select ? select.value : '';
-  if (!emCode) {
-    if (badge) badge.style.display = 'none';
-    if (btnSubmit) btnSubmit.disabled = false;
-    return;
-  }
-
-  const emp = allEmployeesMaster.find(e => e.em_code === emCode);
-  if (!emp || !badge) return;
-
-  if (desktopCurrentUser) {
-    const isGlobalAdmin = ['Admin', 'Executive'].includes(desktopCurrentUser.role) || 
-                          desktopCurrentUser.team === 'WH' || 
-                          desktopCurrentUser.grp === 'WH';
-
-    const isSameDept = isGlobalAdmin || (
-      (desktopCurrentUser.grp && emp.grp && desktopCurrentUser.grp === emp.grp) ||
-      (desktopCurrentUser.team && emp.team && desktopCurrentUser.team === emp.team) ||
-      (desktopCurrentUser.dept && emp.dept && desktopCurrentUser.dept === emp.dept)
-    );
-
-    if (!isSameDept) {
-      badge.style.display = 'block';
-      badge.style.background = '#FEE2E2';
-      badge.style.border = '1.5px solid #FCA5A5';
-      badge.style.color = '#B91C1C';
-      badge.innerHTML = `
-        <div style="font-weight: 700;">⚠️ ไม่อนุญาตให้กำหนดจุดงานยากข้ามแผนก!</div>
-        <div style="font-size: 12px; margin-top: 2px;">
-          คุณ (${desktopCurrentUser.fullname}) สังกัด "${desktopCurrentUser.dept || desktopCurrentUser.grp}"<br>
-          แต่พนักงาน (${emp.name_th}) สังกัด "${emp.dept || emp.grp}"
-        </div>
-      `;
-      if (btnSubmit) btnSubmit.disabled = true;
-      return;
-    }
-  }
-
-  badge.style.display = 'block';
-  badge.style.background = '#ECFDF5';
-  badge.style.border = '1px solid #A7F3D0';
-  badge.style.color = '#065F46';
-  badge.innerHTML = `
-    <div><i class="fa-solid fa-circle-check"></i> <strong>${emp.em_code} - ${emp.name_th}</strong> (แผนก: ${emp.dept || '-'})</div>
-  `;
-  if (btnSubmit) btnSubmit.disabled = false;
-}
-
-function onAssignStationCodeChanged() {
-  const select = document.getElementById('assignStationCodeSelect');
-  const monthSelect = document.getElementById('assignStationMonthSelect');
-  const preview = document.getElementById('assignStationPreviewPoints');
-  const monthDesc = document.getElementById('assignMonthDesc');
-  if (!select || !preview) return;
-
-  const opt = select.options[select.selectedIndex];
-  const selMonth = monthSelect ? monthSelect.value : 'ALL';
-
-  if (opt && opt.dataset.points) {
-    const pts = parseFloat(opt.dataset.points);
-    if (selMonth === 'ALL') {
-      const totalPts = pts * currentPeriodMonthsElapsed;
-      preview.innerHTML = `💡 <strong>คิดคะแนนรอบทุกเดือน:</strong> +${pts.toFixed(1)} แต้ม/เดือน &nbsp;|&nbsp; สะสมปัจจุบัน (${currentPeriodMonthsElapsed} เดือน) = <strong style="color: #047857; text-decoration: underline;">+${totalPts.toFixed(1)} แต้ม</strong>`;
-      if (monthDesc) monthDesc.innerText = `ระบบจะคำนวณบวกคะแนนสะสมต่อเนื่องทุกเดือนในรอบประเมิน (ปัจจุบันสะสมแล้ว ${currentPeriodMonthsElapsed} เดือน)`;
+  const selectEl = document.getElementById(`stSelectCode_${emCode}`);
+  if (selectEl) {
+    if (cleanCode) {
+      selectEl.style.borderColor = '#10B981';
+      selectEl.style.color = '#065F46';
+      selectEl.style.background = '#ECFDF5';
     } else {
-      preview.innerHTML = `💡 <strong>คิดคะแนนเฉพาะเดือน ${selMonth}:</strong> ได้รับ <strong style="color: #047857;">+${pts.toFixed(1)} แต้ม</strong> ในเดือนดังกล่าว`;
-      if (monthDesc) monthDesc.innerText = `ระบบจะบวกคะแนนเฉพาะรอบของเดือน ${selMonth}`;
+      selectEl.style.borderColor = '';
+      selectEl.style.color = '';
+      selectEl.style.background = '';
     }
-  } else {
-    preview.innerText = '';
   }
+
+  const cfg = cleanCode ? allStationConfigs.find(c => c.station_code === cleanCode && c.is_active !== false) : null;
+  const pts = cfg ? parseFloat(cfg.bonus_points || 0) : 0;
+
+  const ptsEl = document.getElementById(`stRowPts_${emCode}`);
+  if (ptsEl) {
+    if (pts > 0) {
+      ptsEl.className = 'badge badge-grade-A';
+      ptsEl.style.cssText = 'font-size: 12.5px; font-weight: 700;';
+      ptsEl.innerText = `+${pts.toFixed(1)} แต้ม`;
+    } else if (cleanText) {
+      ptsEl.className = 'badge badge-neutral';
+      ptsEl.style.cssText = 'font-size: 12px;';
+      ptsEl.innerText = '0.0 แต้ม';
+    } else {
+      ptsEl.className = 'badge';
+      ptsEl.style.cssText = 'background: #F1F5F9; color: #94A3B8; font-size: 11.5px;';
+      ptsEl.innerText = 'ยังไม่ระบุ';
+    }
+  }
+
+  const rowEl = document.getElementById(`stRow_${emCode}`);
+  if (rowEl) {
+    rowEl.style.background = !isSameAsOrig ? '#FFFBEB' : (pts > 0 ? '#F0FDF4' : '');
+  }
+
+  const saveBtn = document.getElementById(`stBtnSave_${emCode}`);
+  if (saveBtn) {
+    saveBtn.className = `btn btn-sm ${!isSameAsOrig ? 'btn-primary' : 'btn-secondary'}`;
+  }
+
+  updateStationDirtyBadge();
+  updateStationRosterCounters();
 }
 
-async function submitAssignStation(event) {
-  event.preventDefault();
-  const emCode = document.getElementById('assignStationEmpSelect').value;
-  const stationCode = document.getElementById('assignStationCodeSelect').value;
-  const assignedMonth = document.getElementById('assignStationMonthSelect')?.value || 'ALL';
-  const remark = document.getElementById('assignStationRemark').value;
+async function saveSingleStationRosterRow(emCode) {
+  const textEl = document.getElementById(`stInputText_${emCode}`);
+  const selectEl = document.getElementById(`stSelectCode_${emCode}`);
+  const remarkEl = document.getElementById(`stInputRemark_${emCode}`);
+  const btn = document.getElementById(`stBtnSave_${emCode}`);
 
-  if (!emCode || !stationCode) {
-    alert('กรุณาเลือกพนักงานและจุดงานยาก');
-    return;
-  }
-
+  const stationNameText = textEl ? textEl.value.trim() : '';
+  const stationCode = selectEl ? selectEl.value.trim() : '';
+  const remark = remarkEl ? remarkEl.value.trim() : '';
+  const selectedMonth = document.getElementById('stationRosterMonth')?.value || getDefaultStationMonthStr();
   const assignedBy = desktopCurrentUser ? desktopCurrentUser.username : 'ADMIN';
 
   try {
-    const btn = document.getElementById('btnSubmitAssignStation');
-    btn.disabled = true;
-    btn.innerText = 'กำลังบันทึก...';
+    if (btn) {
+      btn.disabled = true;
+      btn.innerText = '...';
+    }
 
-    const res = await fetch('/api/kpi/station-assignments', {
+    const res = await fetch('/api/kpi/station-roster/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        em_code: emCode,
-        station_code: stationCode,
-        assigned_month: assignedMonth,
+        assigned_month: selectedMonth,
         assigned_by: assignedBy,
-        remark: remark
+        items: [{
+          em_code: emCode,
+          station_name_text: stationNameText,
+          station_code: stationCode,
+          remark
+        }]
       })
     });
     const json = await res.json();
-    btn.disabled = false;
-    btn.innerHTML = '<i class="fa-solid fa-check"></i> บันทึกและคำนวณคะแนนทันที';
+    if (!json.success) throw new Error(json.message);
 
+    await loadStationRoster();
+    loadSummaryData();
+  } catch (err) {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-check"></i> บันทึก';
+    }
+    alert('เกิดข้อผิดพลาด: ' + err.message);
+  }
+}
+
+async function saveAllStationRosterChanges() {
+  const selectedMonth = document.getElementById('stationRosterMonth')?.value || getDefaultStationMonthStr();
+  const assignedBy = desktopCurrentUser ? desktopCurrentUser.username : 'ADMIN';
+
+  let itemsToSave = Object.values(stationRosterDirtyMap);
+  if (itemsToSave.length === 0) {
+    // หากไม่ได้แก้ไขแถวใหม่แต่กดบันทึกทั้งหมด ให้บันทึกแถวที่มีข้อมูลจุดจ่ายอยู่แล้วทั้งหมดในหน้าจอ
+    itemsToSave = stationRosterList
+      .filter(r => (r.station_name_text && r.station_name_text.trim()) || r.station_code)
+      .map(r => ({
+        em_code: r.em_code,
+        station_name_text: r.station_name_text,
+        station_code: r.station_code,
+        remark: r.remark
+      }));
+  }
+
+  if (itemsToSave.length === 0) {
+    alert('กรุณาพิมพ์ชื่อจุดจ่ายงานของพนักงานอย่างน้อย 1 คนก่อนกดบันทึก');
+    return;
+  }
+
+  const btn1 = document.getElementById('btnSaveAllStationRoster');
+  const btn2 = document.getElementById('btnSaveAllStationRosterTop');
+
+  try {
+    if (btn1) { btn1.disabled = true; btn1.innerText = 'กำลังบันทึก...'; }
+    if (btn2) { btn2.disabled = true; btn2.innerText = 'กำลังบันทึก...'; }
+
+    const res = await fetch('/api/kpi/station-roster/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        assigned_month: selectedMonth,
+        assigned_by: assignedBy,
+        items: itemsToSave
+      })
+    });
+    const json = await res.json();
     if (!json.success) throw new Error(json.message);
 
     alert(json.message);
-    closeAssignStationModal();
-    loadStationsData();
+    await loadStationRoster();
+    loadSummaryData();
+  } catch (err) {
+    alert('เกิดข้อผิดพลาด: ' + err.message);
+  } finally {
+    if (btn1) {
+      btn1.disabled = false;
+      btn1.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> บันทึกทั้งหมด (<span id="stationDirtyCountBadge">${Object.keys(stationRosterDirtyMap).length}</span>)`;
+    }
+    if (btn2) {
+      btn2.disabled = false;
+      btn2.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> บันทึกข้อมูลจุดจ่ายทั้งหมด`;
+    }
+  }
+}
+
+async function copyPreviousMonthRoster() {
+  const targetMonth = document.getElementById('stationRosterMonth')?.value || getDefaultStationMonthStr();
+  const parts = targetMonth.split('-');
+  if (parts.length !== 2) return;
+  let y = parseInt(parts[0], 10);
+  let m = parseInt(parts[1], 10) - 1;
+  if (m < 1) {
+    m = 12;
+    y -= 1;
+  }
+  const defaultPrevMonth = `${y}-${String(m).padStart(2, '0')}`;
+  const sourceMonth = prompt(`ระบุเดือนต้นทางที่ต้องการคัดลอกข้อมูลจุดจ่ายงานมายังเดือน ${targetMonth} (รูปแบบ YYYY-MM):`, defaultPrevMonth);
+  if (!sourceMonth || !sourceMonth.trim()) return;
+
+  const dept = document.getElementById('stationDeptFilterSelect')?.value || 'ALL';
+  const assignedBy = desktopCurrentUser ? desktopCurrentUser.username : 'ADMIN';
+
+  try {
+    const res = await fetch('/api/kpi/station-roster/copy-month', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_month: sourceMonth.trim(),
+        target_month: targetMonth,
+        dept,
+        assigned_by: assignedBy
+      })
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message);
+
+    alert(json.message);
+    await loadStationRoster();
     loadSummaryData();
   } catch (err) {
     alert('เกิดข้อผิดพลาด: ' + err.message);
   }
 }
 
-async function deleteStationAssignment(id, empName, stationName) {
-  if (!confirm(`คุณต้องการยกเลิกการประจำจุด "${stationName}" ของคุณ ${empName} ใช่หรือไม่?\n(ระบบจะคำนวณหักคะแนนบวกอัตโนมัตินี้ออกทันที)`)) {
-    return;
-  }
+function exportStationRosterExcel() {
+  const month = document.getElementById('stationRosterMonth')?.value || getDefaultStationMonthStr();
+  const dept = document.getElementById('stationDeptFilterSelect')?.value || 'ALL';
+  const username = desktopCurrentUser ? (desktopCurrentUser.username || '') : '';
+  window.open(`/api/kpi/station-roster/export?month=${encodeURIComponent(month)}&dept=${encodeURIComponent(dept)}&username=${encodeURIComponent(username)}`, '_blank');
+}
+
+function triggerImportStationRoster() {
+  const input = document.getElementById('stationRosterFileInput');
+  if (input) input.click();
+}
+
+async function handleStationRosterFileImport(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const selectedMonth = document.getElementById('stationRosterMonth')?.value || getDefaultStationMonthStr();
+  const assignedBy = desktopCurrentUser ? desktopCurrentUser.username : 'ADMIN';
+
+  const formData = new FormData();
+  formData.append('excel_file', file);
+  formData.append('assigned_month', selectedMonth);
+  formData.append('assigned_by', assignedBy);
 
   try {
-    const res = await fetch(`/api/kpi/station-assignments/${id}`, { method: 'DELETE' });
+    const res = await fetch('/api/kpi/station-roster/import', {
+      method: 'POST',
+      body: formData
+    });
     const json = await res.json();
     if (!json.success) throw new Error(json.message);
 
     alert(json.message);
-    loadStationsData();
+    await loadStationRoster();
+    loadSummaryData();
+  } catch (err) {
+    alert('เกิดข้อผิดพลาดในการนำเข้าไฟล์ Excel: ' + err.message);
+  } finally {
+    event.target.value = '';
+  }
+}
+
+// --- Modal: Individual Employee Station History across Months ---
+async function openEmpStationHistoryModal(emCode) {
+  if (!emCode) return;
+  currentHistoryModalEmCode = emCode;
+
+  const modal = document.getElementById('empStationHistoryModal');
+  if (modal) modal.classList.add('active');
+
+  const quickMonth = document.getElementById('histQuickMonth');
+  if (quickMonth) {
+    quickMonth.value = document.getElementById('stationRosterMonth')?.value || getDefaultStationMonthStr();
+  }
+  const quickText = document.getElementById('histQuickStationText');
+  if (quickText) quickText.value = '';
+  populateStationDropdowns();
+  const quickCode = document.getElementById('histQuickStationCode');
+  if (quickCode) quickCode.value = '';
+
+  await refreshEmpStationHistoryModal();
+}
+
+function closeEmpStationHistoryModal() {
+  const modal = document.getElementById('empStationHistoryModal');
+  if (modal) modal.classList.remove('active');
+  currentHistoryModalEmCode = null;
+}
+
+function onHistQuickStationTextChanged() {
+  const textEl = document.getElementById('histQuickStationText');
+  const codeEl = document.getElementById('histQuickStationCode');
+  if (!textEl || !codeEl) return;
+  const matched = matchStationConfigClient(textEl.value);
+  codeEl.value = matched || '';
+}
+
+function onHistQuickStationCodeChanged() {
+  const textEl = document.getElementById('histQuickStationText');
+  const codeEl = document.getElementById('histQuickStationCode');
+  if (!textEl || !codeEl) return;
+  if (codeEl.value && !textEl.value.trim()) {
+    const cfg = allStationConfigs.find(c => c.station_code === codeEl.value);
+    if (cfg) {
+      textEl.value = cfg.station_name.split('(')[0].trim() || cfg.station_name;
+    }
+  }
+}
+
+async function saveHistQuickStation() {
+  if (!currentHistoryModalEmCode) return;
+  const monthVal = document.getElementById('histQuickMonth')?.value || getDefaultStationMonthStr();
+  const stationText = (document.getElementById('histQuickStationText')?.value || '').trim();
+  const stationCode = (document.getElementById('histQuickStationCode')?.value || '').trim();
+
+  if (!stationText && !stationCode) {
+    alert('กรุณาระบุชื่อจุดจ่ายงานที่ประจำ');
+    return;
+  }
+
+  const assignedBy = desktopCurrentUser ? desktopCurrentUser.username : 'ADMIN';
+
+  try {
+    const res = await fetch('/api/kpi/station-roster/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        assigned_month: monthVal,
+        assigned_by: assignedBy,
+        items: [{
+          em_code: currentHistoryModalEmCode,
+          station_name_text: stationText,
+          station_code: stationCode,
+          remark: ''
+        }]
+      })
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message);
+
+    document.getElementById('histQuickStationText').value = '';
+    document.getElementById('histQuickStationCode').value = '';
+    await refreshEmpStationHistoryModal();
+    await loadStationRoster();
+    loadSummaryData();
+  } catch (err) {
+    alert('เกิดข้อผิดพลาด: ' + err.message);
+  }
+}
+
+function prefillHistQuickStation(monthVal, stationText, stationCode) {
+  const mEl = document.getElementById('histQuickMonth');
+  const tEl = document.getElementById('histQuickStationText');
+  const cEl = document.getElementById('histQuickStationCode');
+  if (mEl && monthVal && monthVal !== 'ALL') mEl.value = monthVal;
+  if (tEl) tEl.value = stationText || '';
+  if (cEl) cEl.value = stationCode || '';
+  if (tEl) tEl.focus();
+}
+
+async function refreshEmpStationHistoryModal() {
+  if (!currentHistoryModalEmCode) return;
+  const tbody = document.getElementById('empStationHistoryTableBody');
+  if (tbody) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 20px; color: #64748B;">กำลังโหลดประวัติ...</td></tr>`;
+  }
+
+  try {
+    const res = await fetch(`/api/kpi/station-history/${encodeURIComponent(currentHistoryModalEmCode)}`);
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message);
+
+    const emp = json.employee || {};
+    const history = json.history || [];
+
+    const titleEl = document.getElementById('empStationHistoryModalTitle');
+    const subEl = document.getElementById('empStationHistoryModalSubtitle');
+    if (titleEl) {
+      titleEl.innerText = `ประวัติจุดจ่ายงานย้อนหลัง: ${emp.em_code || ''} - ${emp.name_th || ''}`;
+    }
+    if (subEl) {
+      const totalBonus = history.reduce((sum, h) => sum + parseFloat(h.bonus_points || 0), 0);
+      subEl.innerText = `แผนก: ${emp.dept || '-'} | ตำแหน่ง: ${emp.position_name || '-'} | บันทึกสะสมรวม ${history.length} เดือน (คะแนนจุดงานยากสะสม +${totalBonus.toFixed(1)} แต้ม)`;
+    }
+
+    if (!tbody) return;
+    if (history.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 28px; color: #94A3B8;">ยังไม่มีประวัติการบันทึกจุดจ่ายงานของพนักงานคนนี้</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = history.map(h => {
+      const pts = parseFloat(h.bonus_points || 0);
+      const stText = h.station_name_text || h.station_config_name || h.station_code || '-';
+      const diffBadge = h.station_code && pts > 0
+        ? `<span class="badge badge-grade-B">${h.station_config_name || h.station_code}</span>`
+        : `<span class="badge badge-neutral">จุดจ่ายทั่วไป</span>`;
+      const ptsHtml = pts > 0
+        ? `<strong style="color: #059669;">+${pts.toFixed(1)} แต้ม</strong>`
+        : `<span style="color: #64748B;">0.0 แต้ม</span>`;
+      const assigner = h.assigner_name || h.assigned_by || '-';
+
+      return `
+        <tr>
+          <td style="font-weight: 600; color: #0F172A;">
+            ${formatThaiMonthYearLabel(h.assigned_month)}
+          </td>
+          <td>
+            <strong style="color: #1E293B;">${stText}</strong>
+            ${h.remark ? `<div style="font-size: 11px; color: #64748B;">หมายเหตุ: ${h.remark}</div>` : ''}
+          </td>
+          <td>${diffBadge}</td>
+          <td class="text-right">${ptsHtml}</td>
+          <td style="font-size: 11.5px; color: #64748B;">
+            <div>${assigner}</div>
+            <div>${h.assigned_date || '-'}</div>
+          </td>
+          <td class="text-right" style="white-space: nowrap;">
+            <button type="button" class="btn btn-sm btn-secondary"
+              onclick="prefillHistQuickStation('${escapeHtmlAttr(h.assigned_month)}', '${escapeHtmlAttr(stText)}', '${escapeHtmlAttr(h.station_code || '')}')"
+              style="padding: 4px 8px; font-size: 11.5px; margin-right: 4px;">
+              <i class="fa-solid fa-pen"></i> แก้ไข
+            </button>
+            <button type="button" class="btn btn-sm btn-secondary" style="color: #DC2626; padding: 4px 8px; font-size: 11.5px;"
+              onclick="deleteStationAssignmentFromHistory(${h.assignment_id}, '${escapeHtmlAttr(stText)}', '${escapeHtmlAttr(h.assigned_month)}')">
+              <i class="fa-solid fa-trash-can"></i>
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 20px; color: #DC2626;">เกิดข้อผิดพลาด: ${err.message}</td></tr>`;
+    }
+  }
+}
+
+async function deleteStationAssignmentFromHistory(assignmentId, stationName, monthLabel) {
+  if (!confirm(`ยืนยันการลบประวัติประจำจุด "${stationName}" ของเดือน ${monthLabel} ใช่หรือไม่?`)) return;
+  try {
+    const res = await fetch(`/api/kpi/station-assignments/${assignmentId}`, { method: 'DELETE' });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message);
+
+    await refreshEmpStationHistoryModal();
+    await loadStationRoster();
+    loadSummaryData();
+  } catch (err) {
+    alert('เกิดข้อผิดพลาด: ' + err.message);
+  }
+}
+
+async function deleteStationConfig(stationCode) {
+  if (!confirm(`ยืนยันการลบเกณฑ์จุดงานยาก "${stationCode}" ใช่หรือไม่?\n(ประวัติชื่อจุดจ่ายของพนักงานจะยังคงถูกเก็บไว้ แต่จะไม่คำนวณคะแนนพิเศษของจุดนี้)`)) {
+    return;
+  }
+  try {
+    const res = await fetch(`/api/kpi/stations/${encodeURIComponent(stationCode)}`, { method: 'DELETE' });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message);
+
+    alert(json.message);
+    await loadStationRoster();
     loadSummaryData();
   } catch (err) {
     alert('เกิดข้อผิดพลาด: ' + err.message);
@@ -2249,7 +2780,7 @@ async function deleteStationAssignment(id, empName, stationName) {
 
 // Modal Station Config
 function openAddStationModal() {
-  document.getElementById('stationConfigModalTitle').innerHTML = '<i class="fa-solid fa-plus-circle" style="color: #4F46E5;"></i> เพิ่มจุดจ่ายงานยากใหม่';
+  document.getElementById('stationConfigModalTitle').innerHTML = 'เพิ่มเกณฑ์จุดจ่ายงานยากใหม่';
   document.getElementById('stationConfigIsEdit').value = '0';
   const codeInput = document.getElementById('cfgStationCode');
   codeInput.value = '';
@@ -2266,14 +2797,14 @@ function openEditStationModal(code) {
   const station = allStationConfigs.find(s => s.station_code === code);
   if (!station) return;
 
-  document.getElementById('stationConfigModalTitle').innerHTML = '<i class="fa-solid fa-pen-to-square" style="color: #4F46E5;"></i> แก้ไขเกณฑ์จุดจ่ายงานยาก';
+  document.getElementById('stationConfigModalTitle').innerHTML = 'แก้ไขเกณฑ์จุดจ่ายงานยาก';
   document.getElementById('stationConfigIsEdit').value = '1';
   const codeInput = document.getElementById('cfgStationCode');
   codeInput.value = station.station_code;
   codeInput.disabled = true; // Key cannot be edited
   document.getElementById('cfgStationName').value = station.station_name;
   document.getElementById('cfgBonusPoints').value = station.bonus_points;
-  document.getElementById('cfgBonusFrequency').value = station.bonus_frequency || 'PERIOD';
+  document.getElementById('cfgBonusFrequency').value = station.bonus_frequency || 'MONTHLY';
   document.getElementById('cfgStationIsActive').checked = (station.is_active !== false);
 
   document.getElementById('stationConfigModal').classList.add('active');
@@ -2314,13 +2845,13 @@ async function submitStationConfig(event) {
     });
     const json = await res.json();
     btn.disabled = false;
-    btn.innerHTML = '<i class="fa-solid fa-save"></i> บันทึกการตั้งค่า';
+    btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> บันทึกการตั้งค่า';
 
     if (!json.success) throw new Error(json.message);
 
     alert(json.message);
     closeStationConfigModal();
-    loadStationsData();
+    await loadStationRoster();
     loadSummaryData();
   } catch (err) {
     alert('เกิดข้อผิดพลาด: ' + err.message);

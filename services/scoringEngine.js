@@ -5,6 +5,124 @@ const pool = require('../db');
  */
 class ScoringEngine {
   /**
+   * ตรวจสอบและอัปเกรดโครงสร้างตาราง kpi_employee_station_assignments ให้รองรับการเก็บจุดจ่ายงานทั่วไป + จุดงานยากรายเดือน
+   */
+  async ensureStationAssignmentSchema(targetPool = pool) {
+    if (targetPool._stationSchemaReady) return;
+    try {
+      await targetPool.query(`
+        ALTER TABLE kpi_employee_station_assignments 
+        ADD COLUMN IF NOT EXISTS station_name_text VARCHAR(150);
+      `).catch(() => {});
+
+      await targetPool.query(`
+        ALTER TABLE kpi_employee_station_assignments 
+        DROP CONSTRAINT IF EXISTS kpi_employee_station_assignments_station_code_fkey;
+      `).catch(() => {});
+
+      await targetPool.query(`
+        ALTER TABLE kpi_employee_station_assignments 
+        ALTER COLUMN station_code DROP NOT NULL;
+      `).catch(() => {});
+
+      await targetPool.query(`
+        UPDATE kpi_employee_station_assignments a
+        SET station_name_text = COALESCE(c.station_name, a.station_code)
+        FROM kpi_station_point_configs c
+        WHERE a.station_code = c.station_code
+          AND (a.station_name_text IS NULL OR TRIM(a.station_name_text) = '');
+      `).catch(() => {});
+
+      await targetPool.query(`
+        UPDATE kpi_employee_station_assignments
+        SET station_name_text = station_code
+        WHERE (station_name_text IS NULL OR TRIM(station_name_text) = '')
+          AND station_code IS NOT NULL;
+      `).catch(() => {});
+
+      await targetPool.query(`
+        DELETE FROM kpi_employee_station_assignments a
+        USING kpi_employee_station_assignments b
+        WHERE a.assignment_id < b.assignment_id
+          AND a.period_id = b.period_id
+          AND a.em_code = b.em_code
+          AND a.assigned_month = b.assigned_month;
+      `).catch(() => {});
+
+      await targetPool.query(`
+        ALTER TABLE kpi_employee_station_assignments 
+        DROP CONSTRAINT IF EXISTS unique_period_emp_station_month;
+      `).catch(() => {});
+
+      await targetPool.query(`
+        ALTER TABLE kpi_employee_station_assignments 
+        ADD CONSTRAINT uq_kpi_emp_station_period_month UNIQUE (period_id, em_code, assigned_month);
+      `).catch(() => {});
+
+      targetPool._stationSchemaReady = true;
+    } catch (err) {
+      console.warn('Warning ensuring station assignment schema:', err.message);
+    }
+  }
+
+  /**
+   * จับคู่ชื่อจุดจ่ายงานที่พิมพ์ (Free Text) กับรหัสเกณฑ์จุดงานยาก (kpi_station_point_configs) อัตโนมัติ
+   */
+  matchStationConfigCode(rawText, stationConfigs = []) {
+    const text = String(rawText || '').trim();
+    if (!text) return null;
+
+    const norm = (s) => String(s || '').trim().toLowerCase().replace(/[\s_\-]+/g, '');
+    const normInput = norm(text);
+    if (!normInput) return null;
+
+    const activeConfigs = (stationConfigs || []).filter(c => c && c.is_active !== false);
+
+    // 1. Exact normalized match against station_code, station_name, base name before '(', or text inside '()'
+    for (const c of activeConfigs) {
+      const normCode = norm(c.station_code);
+      const normName = norm(c.station_name);
+      const baseName = String(c.station_name || '').split('(')[0].trim();
+      const normBase = norm(baseName);
+      const parenMatch = String(c.station_name || '').match(/\(([^)]+)\)/);
+      const normParen = parenMatch ? norm(parenMatch[1]) : '';
+
+      if (
+        normInput === normCode ||
+        normInput === normName ||
+        (normBase && normInput === normBase) ||
+        (normParen && normInput === normParen)
+      ) {
+        return c.station_code;
+      }
+    }
+
+    // 2. Partial / token match (เช่น พิมพ์ "E Picking Zone 1" หรือ "SR Zone A" หรือ "Piece Picking")
+    for (const c of activeConfigs) {
+      const codeRaw = String(c.station_code || '').trim();
+      const baseName = String(c.station_name || '').split('(')[0].trim();
+      const normCode = norm(codeRaw);
+      const normBase = norm(baseName);
+
+      if (normBase && normBase.length >= 4 && normInput.includes(normBase)) {
+        return c.station_code;
+      }
+      if (normCode && normCode.length >= 4 && normInput.includes(normCode)) {
+        return c.station_code;
+      }
+      if (codeRaw && codeRaw.length >= 2) {
+        const escaped = codeRaw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const wordRegex = new RegExp(`(^|[^a-zA-Z0-9])${escaped}($|[^a-zA-Z0-9])`, 'i');
+        if (wordRegex.test(text)) {
+          return c.station_code;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * ดึงรอบการประเมินที่กำลัง Active อยู่
    */
   async getActivePeriod() {
@@ -381,6 +499,7 @@ class ScoringEngine {
    * คำนวณคะแนนพนักงานทุกคน หรือเฉพาะเงื่อนไขที่ระบุ (Recalculate Engine)
    */
   async calculateScores(options = {}) {
+    await this.ensureStationAssignmentSchema(pool);
     const period = options.period || await this.getActivePeriod();
     const periodId = period.period_id;
     const initialScore = parseFloat(period.initial_score || 100.0);

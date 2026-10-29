@@ -212,20 +212,26 @@ CREATE TABLE IF NOT EXISTS kpi_station_point_configs (
 );
 
 -- ------------------------------------------------------------------------------
--- 11. ตารางพนักงานที่ได้รับคะแนนประจำจุดงานยาก (Station Assignments)
+-- 11. ตารางพนักงานประจำจุดจ่ายงาน และประวัติจุดจ่ายรายเดือน (Station Assignments & History)
 -- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS kpi_employee_station_assignments (
     assignment_id SERIAL PRIMARY KEY,
     period_id INT NOT NULL REFERENCES kpi_scoring_periods(period_id) ON DELETE CASCADE,
     em_code VARCHAR(50) NOT NULL,
-    station_code VARCHAR(50) NOT NULL REFERENCES kpi_station_point_configs(station_code) ON DELETE CASCADE,
+    station_name_text VARCHAR(150),
+    station_code VARCHAR(50),
     assigned_month VARCHAR(20) DEFAULT 'ALL' NOT NULL,
     assigned_by VARCHAR(50) DEFAULT 'ADMIN' NOT NULL,
     remark TEXT,
     assigned_date DATE DEFAULT CURRENT_DATE NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    CONSTRAINT unique_period_emp_station_month UNIQUE (period_id, em_code, station_code, assigned_month)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
+ALTER TABLE kpi_employee_station_assignments ADD COLUMN IF NOT EXISTS station_name_text VARCHAR(150);
+ALTER TABLE kpi_employee_station_assignments DROP CONSTRAINT IF EXISTS kpi_employee_station_assignments_station_code_fkey;
+ALTER TABLE kpi_employee_station_assignments ALTER COLUMN station_code DROP NOT NULL;
+ALTER TABLE kpi_employee_station_assignments DROP CONSTRAINT IF EXISTS unique_period_emp_station_month;
+ALTER TABLE kpi_employee_station_assignments DROP CONSTRAINT IF EXISTS uq_kpi_emp_station_period_month;
+ALTER TABLE kpi_employee_station_assignments ADD CONSTRAINT uq_kpi_emp_station_period_month UNIQUE (period_id, em_code, assigned_month);
 
 -- ------------------------------------------------------------------------------
 -- 12. ฟังก์ชัน RPC สำหรับเชื่อมต่อผ่าน SUPABASE_URL + SUPABASE_SECRET_KEY (HTTPS)

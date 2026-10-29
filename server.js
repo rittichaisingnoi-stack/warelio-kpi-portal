@@ -319,18 +319,33 @@ app.get('/api/kpi/employee/:emCode', async (req, res) => {
       ORDER BY transaction_date DESC, created_at DESC;
     `, [emCode, period.period_id]);
 
-    // ดึงคุณสมบัติพิเศษ / ประจำจุดจ่ายงานยาก (E Picking, SR, Piece Picking)
+    // ดึงคุณสมบัติพิเศษ / ประจำจุดจ่ายงานยาก และประวัติจุดจ่ายงานรายเดือนทั้งหมด
+    await scoringEngine.ensureStationAssignmentSchema(pool);
     const stationRes = await pool.query(`
-      SELECT a.assignment_id, a.station_code, a.assigned_month, c.station_name, c.bonus_points, c.bonus_frequency, a.assigned_date, a.remark
+      SELECT 
+        a.assignment_id,
+        a.station_code,
+        COALESCE(NULLIF(TRIM(a.station_name_text), ''), c.station_name, a.station_code, '-') as station_name_text,
+        a.assigned_month,
+        COALESCE(c.station_name, a.station_name_text, a.station_code) as station_name,
+        COALESCE(c.bonus_points, 0) as bonus_points,
+        COALESCE(c.bonus_frequency, 'MONTHLY') as bonus_frequency,
+        TO_CHAR(a.assigned_date, 'YYYY-MM-DD') as assigned_date,
+        a.remark,
+        a.assigned_by
       FROM kpi_employee_station_assignments a
-      JOIN kpi_station_point_configs c ON a.station_code = c.station_code
-      WHERE a.em_code = $1 AND a.period_id = $2;
+      LEFT JOIN kpi_station_point_configs c ON a.station_code = c.station_code AND c.is_active = TRUE
+      WHERE a.em_code = $1 AND a.period_id = $2
+      ORDER BY a.assigned_month DESC, a.created_at DESC;
     `, [emCode, period.period_id]);
+
+    const specialStations = stationRes.rows.filter(r => r.station_code && parseFloat(r.bonus_points || 0) > 0);
 
     res.json({
       success: true,
       employee: summaryRes.rows[0],
-      special_stations: stationRes.rows,
+      special_stations: specialStations,
+      station_history: stationRes.rows,
       timeline: transRes.rows
     });
   } catch (err) {
@@ -1155,19 +1170,50 @@ app.post('/api/kpi/sync/now', async (req, res) => {
 });
 
 // ==============================================================================
-// 10. API: จัดการคุณสมบัติพิเศษ & ประจำจุดจ่ายงานยาก (Difficult Station Points)
+// 10. API: จัดการคุณสมบัติพิเศษ & ประจำจุดจ่ายงานยาก + ตารางกำหนดจุดจ่ายรายเดือนทั้งทีม
 // ==============================================================================
+
+async function getRequestSupervisorInfo(username) {
+  if (!username || !String(username).trim()) return null;
+  const supRes = await pool.query(`
+    SELECT u.username, u.fullname, u.role, e.team, e.grp, COALESCE(e.team, e.grp, '-') as dept
+    FROM ${USERS_TABLE} u
+    LEFT JOIN employee_whc e ON u.username = e.id_emp
+    WHERE u.username = $1;
+  `, [String(username).trim()]);
+  if (supRes.rows.length === 0) return null;
+  const sup = supRes.rows[0];
+  const isAdmin = String(sup.role || '').trim().toLowerCase() === 'admin';
+  const supDept = String(sup.dept || sup.team || sup.grp || '').trim();
+  return { ...sup, isAdmin, supDept };
+}
+
+function getDefaultYearMonth() {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  return `${yyyy}-${mm}`;
+}
 
 // 10.1 ดึงการตั้งค่าจุดจ่ายงานยากทั้งหมด
 app.get('/api/kpi/stations', async (req, res) => {
   try {
+    await scoringEngine.ensureStationAssignmentSchema(pool);
+    const { month } = req.query;
+    const params = [];
+    let countSubquery = `(SELECT COUNT(DISTINCT a.em_code) FROM kpi_employee_station_assignments a WHERE a.station_code = s.station_code)`;
+    if (month && month !== 'ALL') {
+      params.push(String(month).trim());
+      countSubquery = `(SELECT COUNT(DISTINCT a.em_code) FROM kpi_employee_station_assignments a WHERE a.station_code = s.station_code AND (a.assigned_month = $1 OR a.assigned_month = 'ALL'))`;
+    }
+
     const result = await pool.query(`
       SELECT 
         s.*,
-        (SELECT COUNT(*) FROM kpi_employee_station_assignments a WHERE a.station_code = s.station_code) as assigned_count
+        ${countSubquery} as assigned_count
       FROM kpi_station_point_configs s
       ORDER BY s.station_id ASC;
-    `);
+    `, params);
     res.json({ success: true, stations: result.rows });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -1177,6 +1223,7 @@ app.get('/api/kpi/stations', async (req, res) => {
 // 10.2 บันทึก/แก้ไขการตั้งค่าจุดจ่ายงานยาก
 app.post('/api/kpi/stations', async (req, res) => {
   try {
+    await scoringEngine.ensureStationAssignmentSchema(pool);
     const { station_code, station_name, bonus_points, bonus_frequency, is_active } = req.body;
     if (!station_code || !station_name) {
       return res.status(400).json({ success: false, message: 'กรุณากรอกรหัสและชื่อจุดงานยาก' });
@@ -1184,7 +1231,7 @@ app.post('/api/kpi/stations', async (req, res) => {
 
     const code = station_code.trim().toUpperCase().replace(/\s+/g, '_');
     const points = parseFloat(bonus_points) || 10.0;
-    const freq = bonus_frequency || 'PERIOD';
+    const freq = bonus_frequency || 'MONTHLY';
     const active = is_active !== false;
 
     await pool.query(`
@@ -1198,6 +1245,21 @@ app.post('/api/kpi/stations', async (req, res) => {
         updated_at = CURRENT_TIMESTAMP;
     `, [code, station_name.trim(), points, freq, active]);
 
+    // ตรวจสอบรายการที่เคยพิมพ์ชื่อจุดจ่ายงานไว้แต่ยังไม่ได้ผูก station_code หากตรงกับเกณฑ์ใหม่ให้ผูกอัตโนมัติ
+    const cfgRes = await pool.query(`SELECT * FROM kpi_station_point_configs WHERE is_active = TRUE;`);
+    const unmatchedRes = await pool.query(`
+      SELECT assignment_id, station_name_text 
+      FROM kpi_employee_station_assignments 
+      WHERE (station_code IS NULL OR TRIM(station_code) = '') 
+        AND station_name_text IS NOT NULL AND TRIM(station_name_text) != '';
+    `);
+    for (const row of unmatchedRes.rows) {
+      const matched = scoringEngine.matchStationConfigCode(row.station_name_text, cfgRes.rows);
+      if (matched) {
+        await pool.query(`UPDATE kpi_employee_station_assignments SET station_code = $1 WHERE assignment_id = $2;`, [matched, row.assignment_id]);
+      }
+    }
+
     // คำนวณคะแนนใหม่
     await scoringEngine.calculateScores();
 
@@ -1210,18 +1272,682 @@ app.post('/api/kpi/stations', async (req, res) => {
 // 10.3 ลบการตั้งค่าจุดจ่ายงานยาก
 app.delete('/api/kpi/stations/:stationCode', async (req, res) => {
   try {
+    await scoringEngine.ensureStationAssignmentSchema(pool);
     const { stationCode } = req.params;
+    // เก็บประวัติจุดจ่ายงานของพนักงานไว้โดยล้างเฉพาะ station_code ที่ถูกลบ
+    await pool.query(`
+      UPDATE kpi_employee_station_assignments
+      SET station_name_text = COALESCE(NULLIF(TRIM(station_name_text), ''), station_code),
+          station_code = NULL
+      WHERE station_code = $1;
+    `, [stationCode]);
     await pool.query(`DELETE FROM kpi_station_point_configs WHERE station_code = $1;`, [stationCode]);
     await scoringEngine.calculateScores();
-    res.json({ success: true, message: 'ลบจุดจ่ายงานยากสำเร็จ' });
+    res.json({ success: true, message: 'ลบเกณฑ์จุดจ่ายงานยากสำเร็จ (ยังคงเก็บประวัติชื่อจุดจ่ายของพนักงานไว้)' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// 10.4 ดึงรายชื่อพนักงานที่ประจำจุดจ่ายงานยาก
+// 10.4 ดึงตารางจุดจ่ายงานของพนักงานทั้งทีมประจำเดือน (Team Station Roster & Summary)
+app.get('/api/kpi/station-roster', async (req, res) => {
+  try {
+    await scoringEngine.ensureStationAssignmentSchema(pool);
+    const { period_id, month, dept, username } = req.query;
+    const period = period_id ? { period_id: parseInt(period_id, 10) } : await scoringEngine.getActivePeriod();
+    const selectedMonth = (month && String(month).trim()) ? String(month).trim() : getDefaultYearMonth();
+
+    // ตรวจสอบสิทธิ์แผนกของผู้ใช้งาน (ถ้าไม่ใช่ Admin ให้แสดงเฉพาะแผนกตัวเอง)
+    let effectiveDept = (dept && String(dept).trim()) ? String(dept).trim() : 'ALL';
+    const supInfo = await getRequestSupervisorInfo(username);
+    if (supInfo && !supInfo.isAdmin) {
+      effectiveDept = supInfo.supDept && supInfo.supDept !== '-' ? supInfo.supDept : '__NONE__';
+    }
+
+    // ดึงเกณฑ์จุดงานยากทั้งหมด
+    const stationsRes = await pool.query(`
+      SELECT 
+        s.*,
+        (SELECT COUNT(DISTINCT a.em_code) FROM kpi_employee_station_assignments a 
+         WHERE a.station_code = s.station_code AND a.period_id = $1 AND (a.assigned_month = $2 OR a.assigned_month = 'ALL')) as assigned_count
+      FROM kpi_station_point_configs s
+      ORDER BY s.station_id ASC;
+    `, [period.period_id, selectedMonth]);
+    const stationConfigsMap = {};
+    for (const s of stationsRes.rows) {
+      stationConfigsMap[s.station_code] = s;
+    }
+
+    // ดึงรายชื่อแผนกทั้งหมด
+    const deptsRes = await pool.query(`
+      SELECT DISTINCT COALESCE(team, grp, '-') as dept_name
+      FROM employee_whc
+      WHERE id_emp IS NOT NULL AND COALESCE(team, grp, '-') != '-'
+      ORDER BY dept_name ASC;
+    `);
+
+    // ดึงรายชื่อพนักงานในทีม/แผนกที่เลือก
+    const empParams = [];
+    let empWhere = `WHERE e.id_emp IS NOT NULL`;
+    if (effectiveDept && effectiveDept !== 'ALL') {
+      empParams.push(effectiveDept);
+      empWhere += ` AND COALESCE(e.team, e.grp, '-') = $${empParams.length}`;
+    }
+
+    const empRes = await pool.query(`
+      SELECT 
+        e.id_emp as em_code,
+        e.name_th,
+        COALESCE(e.team, e.grp, '-') as dept,
+        e.team,
+        e.grp,
+        TRIM(REGEXP_REPLACE(COALESCE(e.position_name, ''), '\\s+', ' ', 'g')) as position_name
+      FROM employee_whc e
+      ${empWhere}
+      ORDER BY COALESCE(e.team, e.grp, '-') ASC, e.id_emp ASC;
+    `, empParams);
+
+    // ดึงข้อมูลการประจำจุดจ่ายทั้งหมดในรอบประเมินนี้ เพื่อจับคู่เดือนที่เลือก และสรุปประวัติย้อนหลังรายคน
+    const assignRes = await pool.query(`
+      SELECT 
+        a.assignment_id,
+        a.period_id,
+        a.em_code,
+        a.station_name_text,
+        a.station_code,
+        a.assigned_month,
+        a.assigned_by,
+        u.fullname as assigner_name,
+        a.remark,
+        TO_CHAR(a.assigned_date, 'YYYY-MM-DD') as assigned_date,
+        a.created_at
+      FROM kpi_employee_station_assignments a
+      LEFT JOIN ${USERS_TABLE} u ON a.assigned_by = u.username
+      WHERE a.period_id = $1
+      ORDER BY a.assigned_month DESC, a.created_at DESC;
+    `, [period.period_id]);
+
+    const currentMonthMap = {};
+    const empHistoryMap = {};
+
+    for (const row of assignRes.rows) {
+      const code = row.em_code;
+      const cfg = row.station_code ? stationConfigsMap[row.station_code] : null;
+      const isActiveDiff = Boolean(cfg && cfg.is_active !== false);
+      const bonusPts = isActiveDiff ? parseFloat(cfg.bonus_points || 0) : 0;
+      const displayStationName = (row.station_name_text && row.station_name_text.trim())
+        ? row.station_name_text.trim()
+        : (cfg ? cfg.station_name : (row.station_code || ''));
+
+      if (!empHistoryMap[code]) {
+        empHistoryMap[code] = {
+          months_count: 0,
+          difficult_months_count: 0,
+          total_bonus_points: 0,
+          recent_stations: []
+        };
+      }
+      empHistoryMap[code].months_count += 1;
+      if (isActiveDiff && bonusPts > 0) {
+        empHistoryMap[code].difficult_months_count += 1;
+        empHistoryMap[code].total_bonus_points += bonusPts;
+      }
+      if (empHistoryMap[code].recent_stations.length < 4) {
+        empHistoryMap[code].recent_stations.push({
+          assigned_month: row.assigned_month,
+          station_name_text: displayStationName,
+          station_code: row.station_code || '',
+          bonus_points: bonusPts
+        });
+      }
+
+      if (row.assigned_month === selectedMonth) {
+        currentMonthMap[code] = {
+          assignment_id: row.assignment_id,
+          station_name_text: displayStationName,
+          station_code: row.station_code || '',
+          station_config_name: cfg ? cfg.station_name : null,
+          bonus_points: bonusPts,
+          remark: row.remark || '',
+          assigned_by: row.assigned_by || '',
+          assigner_name: row.assigner_name || row.assigned_by || '',
+          assigned_date: row.assigned_date
+        };
+      } else if (row.assigned_month === 'ALL' && !currentMonthMap[code]) {
+        currentMonthMap[code] = {
+          assignment_id: row.assignment_id,
+          station_name_text: displayStationName,
+          station_code: row.station_code || '',
+          station_config_name: cfg ? cfg.station_name : null,
+          bonus_points: bonusPts,
+          remark: row.remark || '',
+          assigned_by: row.assigned_by || '',
+          assigner_name: row.assigner_name || row.assigned_by || '',
+          assigned_date: row.assigned_date,
+          is_from_all_months: true
+        };
+      }
+    }
+
+    // รวบรวมรายชื่อจุดจ่ายที่เคยพิมพ์ไว้ทั้งหมดในระบบ เพื่อใช้ทำ Autocomplete Suggestion
+    const distinctStationNamesSet = new Set();
+    stationsRes.rows.forEach(s => {
+      if (s.station_name) distinctStationNamesSet.add(s.station_name.split('(')[0].trim());
+      if (s.station_name) distinctStationNamesSet.add(s.station_name.trim());
+    });
+    assignRes.rows.forEach(a => {
+      if (a.station_name_text && a.station_name_text.trim()) {
+        distinctStationNamesSet.add(a.station_name_text.trim());
+      }
+    });
+
+    const roster = empRes.rows.map(emp => {
+      const cur = currentMonthMap[emp.em_code] || null;
+      const hist = empHistoryMap[emp.em_code] || {
+        months_count: 0,
+        difficult_months_count: 0,
+        total_bonus_points: 0,
+        recent_stations: []
+      };
+      return {
+        em_code: emp.em_code,
+        name_th: emp.name_th,
+        dept: emp.dept,
+        team: emp.team,
+        grp: emp.grp,
+        position_name: emp.position_name,
+        assignment_id: cur ? cur.assignment_id : null,
+        station_name_text: cur ? cur.station_name_text : '',
+        station_code: cur ? cur.station_code : '',
+        station_config_name: cur ? cur.station_config_name : null,
+        bonus_points: cur ? cur.bonus_points : 0,
+        remark: cur ? cur.remark : '',
+        assigned_by: cur ? cur.assigned_by : '',
+        assigner_name: cur ? cur.assigner_name : '',
+        assigned_date: cur ? cur.assigned_date : null,
+        history_months_count: hist.months_count,
+        history_difficult_count: hist.difficult_months_count,
+        history_total_bonus: hist.total_bonus_points,
+        recent_stations: hist.recent_stations
+      };
+    });
+
+    res.json({
+      success: true,
+      period_id: period.period_id,
+      period_name: period.period_name || 'รอบปัจจุบัน',
+      selected_month: selectedMonth,
+      effective_dept: effectiveDept,
+      departments: deptsRes.rows.map(r => r.dept_name),
+      stations: stationsRes.rows,
+      station_suggestions: Array.from(distinctStationNamesSet).sort(),
+      roster
+    });
+  } catch (err) {
+    console.error('Error fetching station roster:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 10.5 บันทึกจุดจ่ายงานของพนักงาน (รองรับทั้งรายบุคคลและบันทึกทั้งทีมในคราวเดียว)
+app.post('/api/kpi/station-roster/save', async (req, res) => {
+  try {
+    await scoringEngine.ensureStationAssignmentSchema(pool);
+    const { period_id, assigned_month, assigned_by, items } = req.body;
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ success: false, message: 'ไม่มีข้อมูลรายการพนักงานที่ต้องการบันทึก' });
+    }
+
+    const period = period_id ? { period_id: parseInt(period_id, 10) } : await scoringEngine.getActivePeriod();
+    const targetMonth = (assigned_month && String(assigned_month).trim()) ? String(assigned_month).trim() : getDefaultYearMonth();
+    const actor = (assigned_by && String(assigned_by).trim()) ? String(assigned_by).trim() : 'ADMIN';
+
+    const supInfo = await getRequestSupervisorInfo(actor);
+
+    // ดึงเกณฑ์จุดงานยากทั้งหมด
+    const cfgRes = await pool.query(`SELECT * FROM kpi_station_point_configs;`);
+    const allConfigs = cfgRes.rows;
+    const configMap = {};
+    for (const c of allConfigs) {
+      configMap[c.station_code] = c;
+    }
+
+    // ดึงข้อมูลแผนกของพนักงานที่เกี่ยวข้อง
+    const emCodes = items.map(i => String(i.em_code || '').trim()).filter(Boolean);
+    if (emCodes.length === 0) {
+      return res.status(400).json({ success: false, message: 'ไม่พบรหัสพนักงาน' });
+    }
+
+    const empRes = await pool.query(`
+      SELECT id_emp, name_th, COALESCE(team, grp, '-') as dept
+      FROM employee_whc
+      WHERE id_emp = ANY($1::varchar[]);
+    `, [emCodes]);
+    const empMap = {};
+    for (const e of empRes.rows) {
+      empMap[e.id_emp] = e;
+    }
+
+    let savedCount = 0;
+    let deletedCount = 0;
+    let bonusMatchedCount = 0;
+
+    for (const item of items) {
+      const emCode = String(item.em_code || '').trim();
+      if (!emCode || !empMap[emCode]) continue;
+
+      const emp = empMap[emCode];
+      // ดักสิทธิ์ข้ามแผนกสำหรับผู้ที่ไม่ใช่ Admin
+      if (supInfo && !supInfo.isAdmin) {
+        if (!supInfo.supDept || supInfo.supDept === '-' || emp.dept !== supInfo.supDept) {
+          return res.status(403).json({
+            success: false,
+            message: `ไม่อนุญาตให้กำหนดจุดจ่ายงานข้ามแผนก: คุณ (${supInfo.fullname}) สังกัดแผนก "${supInfo.supDept || '-'}" ไม่สามารถจัดการพนักงาน "${emp.name_th}" สังกัดแผนก "${emp.dept || '-'}" ได้`
+          });
+        }
+      }
+
+      const rawText = String(item.station_name_text || '').trim();
+      const hasExplicitCode = item.station_code !== undefined && item.station_code !== null;
+      const explicitCode = hasExplicitCode ? String(item.station_code).trim() : null;
+      const remark = item.remark !== undefined && item.remark !== null ? String(item.remark).trim() : null;
+
+      // ถ้าทั้งช่องพิมพ์ชื่อจุดจ่าย และช่องเกณฑ์จุดงานยาก ว่างเปล่า -> ลบรายการของเดือนนั้น
+      if (!rawText && (!explicitCode || explicitCode === '')) {
+        const delRes = await pool.query(`
+          DELETE FROM kpi_employee_station_assignments
+          WHERE period_id = $1 AND em_code = $2 AND assigned_month = $3;
+        `, [period.period_id, emCode, targetMonth]);
+        if (delRes.rowCount > 0) deletedCount += delRes.rowCount;
+        continue;
+      }
+
+      // กำหนดรหัสจุดงานยาก (ถ้าเลือกจาก Dropdown มาให้ใช้ตามที่เลือก ถ้าไม่ได้ส่งมาให้ Auto-Match จากข้อความ)
+      let finalStationCode = null;
+      if (hasExplicitCode) {
+        if (explicitCode === '__AUTO__') {
+          finalStationCode = scoringEngine.matchStationConfigCode(rawText, allConfigs);
+        } else {
+          finalStationCode = explicitCode && configMap[explicitCode] ? explicitCode : null;
+        }
+      } else {
+        finalStationCode = scoringEngine.matchStationConfigCode(rawText, allConfigs);
+      }
+
+      const matchedCfg = finalStationCode ? configMap[finalStationCode] : null;
+      const finalStationText = rawText || (matchedCfg ? matchedCfg.station_name : (finalStationCode || '-'));
+
+      await pool.query(`
+        INSERT INTO kpi_employee_station_assignments (
+          period_id, em_code, station_name_text, station_code, assigned_month, assigned_by, remark, assigned_date, created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_DATE, CURRENT_TIMESTAMP)
+        ON CONFLICT (period_id, em_code, assigned_month) DO UPDATE SET
+          station_name_text = EXCLUDED.station_name_text,
+          station_code = EXCLUDED.station_code,
+          assigned_by = EXCLUDED.assigned_by,
+          remark = EXCLUDED.remark,
+          assigned_date = CURRENT_DATE,
+          created_at = CURRENT_TIMESTAMP;
+      `, [period.period_id, emCode, finalStationText, finalStationCode, targetMonth, actor, remark || null]);
+
+      savedCount++;
+      if (matchedCfg && matchedCfg.is_active !== false && parseFloat(matchedCfg.bonus_points || 0) > 0) {
+        bonusMatchedCount++;
+      }
+    }
+
+    // คำนวณคะแนน KPI ใหม่ทันที
+    if (items.length === 1 && emCodes.length === 1) {
+      await scoringEngine.calculateScores({ emCode: emCodes[0] });
+    } else {
+      await scoringEngine.calculateScores();
+    }
+
+    res.json({
+      success: true,
+      message: `บันทึกข้อมูลจุดจ่ายงานประจำเดือน ${targetMonth} สำเร็จ (${savedCount} คน, เข้าเกณฑ์จุดงานยาก +คะแนนพิเศษ ${bonusMatchedCount} คน)`,
+      saved_count: savedCount,
+      deleted_count: deletedCount,
+      bonus_matched_count: bonusMatchedCount
+    });
+  } catch (err) {
+    console.error('Error saving station roster:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 10.6 คัดลอกจุดจ่ายงานจากเดือนก่อนหน้ามาใส่เดือนที่เลือก (Copy Previous Month Roster)
+app.post('/api/kpi/station-roster/copy-month', async (req, res) => {
+  try {
+    await scoringEngine.ensureStationAssignmentSchema(pool);
+    const { period_id, source_month, target_month, dept, assigned_by } = req.body;
+    if (!source_month || !target_month) {
+      return res.status(400).json({ success: false, message: 'กรุณาระบุเดือนต้นทางและเดือนปลายทาง' });
+    }
+    if (source_month === target_month) {
+      return res.status(400).json({ success: false, message: 'เดือนต้นทางและเดือนปลายทางต้องไม่ซ้ำกัน' });
+    }
+
+    const period = period_id ? { period_id: parseInt(period_id, 10) } : await scoringEngine.getActivePeriod();
+    const actor = (assigned_by && String(assigned_by).trim()) ? String(assigned_by).trim() : 'ADMIN';
+    const supInfo = await getRequestSupervisorInfo(actor);
+
+    let effectiveDept = (dept && String(dept).trim()) ? String(dept).trim() : 'ALL';
+    if (supInfo && !supInfo.isAdmin) {
+      effectiveDept = supInfo.supDept && supInfo.supDept !== '-' ? supInfo.supDept : '__NONE__';
+    }
+
+    const params = [period.period_id, String(source_month).trim()];
+    let deptFilterSql = '';
+    if (effectiveDept && effectiveDept !== 'ALL') {
+      params.push(effectiveDept);
+      deptFilterSql = ` AND COALESCE(e.team, e.grp, '-') = $${params.length}`;
+    }
+
+    const srcRes = await pool.query(`
+      SELECT a.em_code, a.station_name_text, a.station_code, a.remark
+      FROM kpi_employee_station_assignments a
+      JOIN employee_whc e ON a.em_code = e.id_emp
+      WHERE a.period_id = $1 AND a.assigned_month = $2 ${deptFilterSql};
+    `, params);
+
+    if (srcRes.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `ไม่พบข้อมูลการกำหนดจุดจ่ายงานในเดือน ${source_month} สำหรับนำมาคัดลอก`
+      });
+    }
+
+    let copiedCount = 0;
+    for (const row of srcRes.rows) {
+      await pool.query(`
+        INSERT INTO kpi_employee_station_assignments (
+          period_id, em_code, station_name_text, station_code, assigned_month, assigned_by, remark, assigned_date, created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_DATE, CURRENT_TIMESTAMP)
+        ON CONFLICT (period_id, em_code, assigned_month) DO UPDATE SET
+          station_name_text = EXCLUDED.station_name_text,
+          station_code = EXCLUDED.station_code,
+          assigned_by = EXCLUDED.assigned_by,
+          remark = EXCLUDED.remark,
+          assigned_date = CURRENT_DATE,
+          created_at = CURRENT_TIMESTAMP;
+      `, [
+        period.period_id,
+        row.em_code,
+        row.station_name_text,
+        row.station_code,
+        String(target_month).trim(),
+        actor,
+        row.remark
+      ]);
+      copiedCount++;
+    }
+
+    await scoringEngine.calculateScores();
+
+    res.json({
+      success: true,
+      message: `คัดลอกจุดจ่ายงานจากเดือน ${source_month} มายังเดือน ${target_month} สำเร็จ (${copiedCount} คน)`,
+      copied_count: copiedCount
+    });
+  } catch (err) {
+    console.error('Error copying month station roster:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 10.7 ดูประวัติจุดจ่ายงานย้อนหลังรายบุคคล (Individual Employee Station History across months)
+app.get('/api/kpi/station-history/:emCode', async (req, res) => {
+  try {
+    await scoringEngine.ensureStationAssignmentSchema(pool);
+    const { emCode } = req.params;
+    const empRes = await pool.query(`
+      SELECT id_emp as em_code, name_th, COALESCE(team, grp, '-') as dept, team, grp, position_name
+      FROM employee_whc
+      WHERE id_emp = $1;
+    `, [String(emCode).trim()]);
+
+    if (empRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'ไม่พบข้อมูลพนักงาน' });
+    }
+
+    const histRes = await pool.query(`
+      SELECT 
+        a.assignment_id,
+        a.period_id,
+        p.period_name,
+        a.em_code,
+        COALESCE(NULLIF(TRIM(a.station_name_text), ''), c.station_name, a.station_code, '-') as station_name_text,
+        a.station_code,
+        c.station_name as station_config_name,
+        COALESCE(CASE WHEN c.is_active = TRUE THEN c.bonus_points ELSE 0 END, 0) as bonus_points,
+        c.bonus_frequency,
+        a.assigned_month,
+        a.assigned_by,
+        u.fullname as assigner_name,
+        a.remark,
+        TO_CHAR(a.assigned_date, 'YYYY-MM-DD') as assigned_date,
+        a.created_at
+      FROM kpi_employee_station_assignments a
+      LEFT JOIN kpi_station_point_configs c ON a.station_code = c.station_code
+      LEFT JOIN kpi_scoring_periods p ON a.period_id = p.period_id
+      LEFT JOIN ${USERS_TABLE} u ON a.assigned_by = u.username
+      WHERE a.em_code = $1
+      ORDER BY a.assigned_month DESC, a.created_at DESC;
+    `, [String(emCode).trim()]);
+
+    res.json({
+      success: true,
+      employee: empRes.rows[0],
+      history: histRes.rows
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 10.8 ส่งออก Excel ตารางจุดจ่ายงานของพนักงานในทีม (Export Station Roster Excel)
+app.get('/api/kpi/station-roster/export', async (req, res) => {
+  try {
+    await scoringEngine.ensureStationAssignmentSchema(pool);
+    const { month, dept, username } = req.query;
+    const period = await scoringEngine.getActivePeriod();
+    const selectedMonth = (month && String(month).trim()) ? String(month).trim() : getDefaultYearMonth();
+
+    let effectiveDept = (dept && String(dept).trim()) ? String(dept).trim() : 'ALL';
+    const supInfo = await getRequestSupervisorInfo(username);
+    if (supInfo && !supInfo.isAdmin) {
+      effectiveDept = supInfo.supDept && supInfo.supDept !== '-' ? supInfo.supDept : '__NONE__';
+    }
+
+    const params = [period.period_id, selectedMonth];
+    let deptFilter = '';
+    if (effectiveDept && effectiveDept !== 'ALL') {
+      params.push(effectiveDept);
+      deptFilter = ` AND COALESCE(e.team, e.grp, '-') = $${params.length}`;
+    }
+
+    const rowsRes = await pool.query(`
+      SELECT 
+        e.id_emp as "รหัสพนักงาน",
+        e.name_th as "ชื่อ-นามสกุล",
+        COALESCE(e.team, e.grp, '-') as "แผนก",
+        TRIM(REGEXP_REPLACE(COALESCE(e.position_name, '-'), '\\s+', ' ', 'g')) as "ตำแหน่ง",
+        $2::text as "เดือน (YYYY-MM)",
+        COALESCE(NULLIF(TRIM(a.station_name_text), ''), c.station_name, a.station_code, '') as "จุดจ่ายงานที่ประจำ",
+        COALESCE(a.station_code, '') as "รหัสจุดงานยาก (ถ้ามี)",
+        COALESCE(CASE WHEN c.is_active = TRUE THEN c.bonus_points ELSE 0 END, 0) as "คะแนนพิเศษต่อเดือน",
+        COALESCE(a.remark, '') as "หมายเหตุ"
+      FROM employee_whc e
+      LEFT JOIN kpi_employee_station_assignments a 
+        ON e.id_emp = a.em_code AND a.period_id = $1 AND a.assigned_month = $2
+      LEFT JOIN kpi_station_point_configs c 
+        ON a.station_code = c.station_code
+      WHERE e.id_emp IS NOT NULL ${deptFilter}
+      ORDER BY COALESCE(e.team, e.grp, '-') ASC, e.id_emp ASC;
+    `, params);
+
+    const ws = xlsx.utils.json_to_sheet(rowsRes.rows);
+    const wb = xlsx.utils.book_new();
+    xlsx.utils.book_append_sheet(wb, ws, 'Station_Roster');
+
+    // แนบ Sheet คู่มือรหัสจุดจ่ายงานยากไว้ให้ดูอ้างอิงด้วย
+    const cfgRes = await pool.query(`
+      SELECT 
+        station_code as "รหัสจุดงานยาก",
+        station_name as "ชื่อจุดจ่ายงานยาก (พิมพ์ชื่อนี้หรือรหัสได้)",
+        bonus_points as "คะแนนบวกต่อเดือน",
+        CASE WHEN is_active THEN 'เปิดใช้งาน' ELSE 'ปิดใช้งาน' END as "สถานะ"
+      FROM kpi_station_point_configs
+      ORDER BY station_id ASC;
+    `);
+    const wsRef = xlsx.utils.json_to_sheet(cfgRes.rows);
+    xlsx.utils.book_append_sheet(wb, wsRef, 'เกณฑ์จุดงานยาก');
+
+    const buf = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const deptLabel = (effectiveDept && effectiveDept !== 'ALL') ? `_${effectiveDept}` : '';
+    const safeFilename = encodeURIComponent(`KPI_Station_Roster_${selectedMonth}${deptLabel}.xlsx`);
+    res.setHeader('Content-Disposition', `attachment; filename="KPI_Station_Roster_${selectedMonth}.xlsx"; filename*=UTF-8''${safeFilename}`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.send(buf);
+  } catch (err) {
+    console.error('Export station roster error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 10.9 นำเข้า Excel ตารางจุดจ่ายงานของพนักงานในทีม (Import Station Roster Excel)
+app.post('/api/kpi/station-roster/import', upload.single('excel_file'), async (req, res) => {
+  try {
+    await scoringEngine.ensureStationAssignmentSchema(pool);
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'กรุณาเลือกไฟล์ Excel (.xlsx) ที่ต้องการนำเข้า' });
+    }
+
+    const defaultMonth = (req.body?.assigned_month && String(req.body.assigned_month).trim())
+      ? String(req.body.assigned_month).trim()
+      : getDefaultYearMonth();
+    const actor = (req.body?.assigned_by && String(req.body.assigned_by).trim())
+      ? String(req.body.assigned_by).trim()
+      : 'ADMIN';
+
+    const supInfo = await getRequestSupervisorInfo(actor);
+    const period = await scoringEngine.getActivePeriod();
+
+    const workbook = xlsx.readFile(req.file.path);
+    const sheetName = workbook.SheetNames[0];
+    const rows = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
+
+    try { fs.unlinkSync(req.file.path); } catch (_) {}
+
+    if (!rows || rows.length === 0) {
+      return res.status(400).json({ success: false, message: 'ไม่พบข้อมูลในไฟล์ Excel' });
+    }
+
+    const cfgRes = await pool.query(`SELECT * FROM kpi_station_point_configs;`);
+    const allConfigs = cfgRes.rows;
+    const configMap = {};
+    for (const c of allConfigs) {
+      configMap[c.station_code] = c;
+    }
+
+    const empRes = await pool.query(`
+      SELECT id_emp, name_th, COALESCE(team, grp, '-') as dept
+      FROM employee_whc
+      WHERE id_emp IS NOT NULL;
+    `);
+    const empMap = {};
+    for (const e of empRes.rows) {
+      empMap[String(e.id_emp).trim()] = e;
+    }
+
+    let importedCount = 0;
+    let bonusMatchedCount = 0;
+    let skippedDeptCount = 0;
+
+    for (const r of rows) {
+      const emCode = String(r['รหัสพนักงาน'] || r['em_code'] || r['ID'] || '').trim();
+      if (!emCode || !empMap[emCode]) continue;
+
+      const emp = empMap[emCode];
+      if (supInfo && !supInfo.isAdmin) {
+        if (!supInfo.supDept || supInfo.supDept === '-' || emp.dept !== supInfo.supDept) {
+          skippedDeptCount++;
+          continue;
+        }
+      }
+
+      const rowMonthRaw = String(r['เดือน (YYYY-MM)'] || r['เดือน'] || r['assigned_month'] || defaultMonth).trim();
+      const targetMonth = /^\d{4}-\d{2}$/.test(rowMonthRaw) ? rowMonthRaw : defaultMonth;
+      const stationTextRaw = String(r['จุดจ่ายงานที่ประจำ'] || r['จุดจ่ายงาน'] || r['station_name'] || r['station'] || '').trim();
+      const stationCodeRaw = String(r['รหัสจุดงานยาก (ถ้ามี)'] || r['รหัสจุดงานยาก'] || r['station_code'] || '').trim().toUpperCase();
+      const remarkRaw = String(r['หมายเหตุ'] || r['remark'] || '').trim();
+
+      if (!stationTextRaw && !stationCodeRaw) continue;
+
+      // จับคู่รหัสจุดงานยาก
+      let matchedCode = null;
+      if (stationCodeRaw && configMap[stationCodeRaw]) {
+        matchedCode = stationCodeRaw;
+      } else if (stationTextRaw) {
+        matchedCode = scoringEngine.matchStationConfigCode(stationTextRaw, allConfigs);
+      } else if (stationCodeRaw) {
+        matchedCode = scoringEngine.matchStationConfigCode(stationCodeRaw, allConfigs);
+      }
+
+      const matchedCfg = matchedCode ? configMap[matchedCode] : null;
+      const finalStationText = stationTextRaw || (matchedCfg ? matchedCfg.station_name : stationCodeRaw);
+
+      await pool.query(`
+        INSERT INTO kpi_employee_station_assignments (
+          period_id, em_code, station_name_text, station_code, assigned_month, assigned_by, remark, assigned_date, created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_DATE, CURRENT_TIMESTAMP)
+        ON CONFLICT (period_id, em_code, assigned_month) DO UPDATE SET
+          station_name_text = EXCLUDED.station_name_text,
+          station_code = EXCLUDED.station_code,
+          assigned_by = EXCLUDED.assigned_by,
+          remark = EXCLUDED.remark,
+          assigned_date = CURRENT_DATE,
+          created_at = CURRENT_TIMESTAMP;
+      `, [
+        period.period_id,
+        emCode,
+        finalStationText,
+        matchedCode,
+        targetMonth,
+        actor,
+        remarkRaw || null
+      ]);
+
+      importedCount++;
+      if (matchedCfg && matchedCfg.is_active !== false && parseFloat(matchedCfg.bonus_points || 0) > 0) {
+        bonusMatchedCount++;
+      }
+    }
+
+    await scoringEngine.calculateScores();
+
+    const skipMsg = skippedDeptCount > 0 ? ` (ข้ามพนักงานต่างแผนก ${skippedDeptCount} รายการ)` : '';
+    res.json({
+      success: true,
+      message: `นำเข้าข้อมูลจุดจ่ายงานสำเร็จ ${importedCount} รายการ (เข้าเกณฑ์จุดงานยาก +คะแนนพิเศษ ${bonusMatchedCount} รายการ)${skipMsg}`,
+      imported_count: importedCount,
+      bonus_matched_count: bonusMatchedCount,
+      skipped_dept_count: skippedDeptCount
+    });
+  } catch (err) {
+    console.error('Import station roster error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 10.10 ดึงรายชื่อพนักงานที่ประจำจุดจ่ายงาน (Legacy/Compat API)
 app.get('/api/kpi/station-assignments', async (req, res) => {
   try {
+    await scoringEngine.ensureStationAssignmentSchema(pool);
     const { period_id } = req.query;
     const period = period_id ? { period_id: parseInt(period_id, 10) } : await scoringEngine.getActivePeriod();
 
@@ -1244,10 +1970,11 @@ app.get('/api/kpi/station-assignments', async (req, res) => {
         e.grp,
         e.position_name,
         a.station_code,
+        COALESCE(NULLIF(TRIM(a.station_name_text), ''), c.station_name, a.station_code, '-') as station_name_text,
         a.assigned_month,
-        c.station_name,
-        c.bonus_points,
-        c.bonus_frequency,
+        COALESCE(c.station_name, a.station_name_text, a.station_code, '-') as station_name,
+        COALESCE(c.bonus_points, 0) as bonus_points,
+        COALESCE(c.bonus_frequency, 'MONTHLY') as bonus_frequency,
         a.assigned_by,
         u.fullname as assigner_name,
         a.remark,
@@ -1255,10 +1982,10 @@ app.get('/api/kpi/station-assignments', async (req, res) => {
         a.created_at
       FROM kpi_employee_station_assignments a
       JOIN employee_whc e ON a.em_code = e.id_emp
-      JOIN kpi_station_point_configs c ON a.station_code = c.station_code
+      LEFT JOIN kpi_station_point_configs c ON a.station_code = c.station_code
       LEFT JOIN ${USERS_TABLE} u ON a.assigned_by = u.username
       WHERE a.period_id = $1
-      ORDER BY a.created_at DESC;
+      ORDER BY a.assigned_month DESC, a.created_at DESC;
     `, [period.period_id]);
 
     res.json({
@@ -1272,12 +1999,13 @@ app.get('/api/kpi/station-assignments', async (req, res) => {
   }
 });
 
-// 10.5 กำหนดพนักงานประจำจุดจ่ายงานยาก (พร้อมดักห้ามข้ามแผนก)
+// 10.11 กำหนดพนักงานประจำจุดจ่ายงานรายคน (พร้อมดักห้ามข้ามแผนก)
 app.post('/api/kpi/station-assignments', async (req, res) => {
   try {
-    const { period_id, em_code, station_code, assigned_month, assigned_by, remark } = req.body;
-    if (!em_code || !station_code) {
-      return res.status(400).json({ success: false, message: 'กรุณาระบุรหัสพนักงานและจุดงานยาก' });
+    await scoringEngine.ensureStationAssignmentSchema(pool);
+    const { period_id, em_code, station_code, station_name_text, assigned_month, assigned_by, remark } = req.body;
+    if (!em_code || (!station_code && !station_name_text)) {
+      return res.status(400).json({ success: false, message: 'กรุณาระบุรหัสพนักงานและชื่อจุดจ่ายงาน' });
     }
 
     const period = period_id ? { period_id: parseInt(period_id, 10) } : await scoringEngine.getActivePeriod();
@@ -1293,62 +2021,60 @@ app.post('/api/kpi/station-assignments', async (req, res) => {
     const emp = empRes.rows[0];
 
     // ตรวจสอบสิทธิ์ผู้กำหนดว่าข้ามแผนกหรือไม่
-    if (assigned_by) {
-      const supRes = await pool.query(`
-        SELECT u.username, u.fullname, u.role, e.team, e.grp, COALESCE(e.team, e.grp, '-') as dept
-        FROM ${USERS_TABLE} u
-        LEFT JOIN employee_whc e ON u.username = e.id_emp
-        WHERE u.username = $1;
-      `, [assigned_by.trim()]);
-
-      if (supRes.rows.length > 0) {
-        const supervisor = supRes.rows[0];
-        const isGlobalAdmin = ['Admin', 'Executive'].includes(supervisor.role) || 
-                              supervisor.team === 'WH' || 
-                              supervisor.grp === 'WH';
-
-        if (!isGlobalAdmin) {
-          const isSameDept = (
-            (supervisor.grp && emp.grp && supervisor.grp === emp.grp) ||
-            (supervisor.team && emp.team && supervisor.team === emp.team) ||
-            (supervisor.dept && emp.dept && supervisor.dept === emp.dept)
-          );
-          if (!isSameDept) {
-            return res.status(403).json({
-              success: false,
-              message: `ไม่อนุญาตให้กำหนดจุดงานยากข้ามแผนก: คุณ (${supervisor.fullname}) สังกัด "${supervisor.dept || supervisor.grp}" ไม่สามารถจัดการพนักงานสังกัด "${emp.dept || emp.grp}" ได้`
-            });
-          }
-        }
+    const supInfo = await getRequestSupervisorInfo(assigned_by);
+    if (supInfo && !supInfo.isAdmin) {
+      if (!supInfo.supDept || supInfo.supDept === '-' || emp.dept !== supInfo.supDept) {
+        return res.status(403).json({
+          success: false,
+          message: `ไม่อนุญาตให้กำหนดจุดจ่ายงานข้ามแผนก: คุณ (${supInfo.fullname}) สังกัด "${supInfo.supDept || '-'}" ไม่สามารถจัดการพนักงานสังกัด "${emp.dept || '-'}" ได้`
+        });
       }
     }
 
-    const month = assigned_month || 'ALL';
+    const cfgRes = await pool.query(`SELECT * FROM kpi_station_point_configs;`);
+    const configMap = {};
+    for (const c of cfgRes.rows) configMap[c.station_code] = c;
+
+    let finalCode = station_code ? String(station_code).trim() : null;
+    if (!finalCode && station_name_text) {
+      finalCode = scoringEngine.matchStationConfigCode(station_name_text, cfgRes.rows);
+    }
+    const matchedCfg = finalCode ? configMap[finalCode] : null;
+    const finalText = (station_name_text && String(station_name_text).trim())
+      ? String(station_name_text).trim()
+      : (matchedCfg ? matchedCfg.station_name : (finalCode || '-'));
+    const month = assigned_month || getDefaultYearMonth();
 
     await pool.query(`
-      INSERT INTO kpi_employee_station_assignments (period_id, em_code, station_code, assigned_month, assigned_by, remark)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      ON CONFLICT (period_id, em_code, station_code, assigned_month) DO UPDATE SET
+      INSERT INTO kpi_employee_station_assignments (
+        period_id, em_code, station_name_text, station_code, assigned_month, assigned_by, remark, assigned_date, created_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_DATE, CURRENT_TIMESTAMP)
+      ON CONFLICT (period_id, em_code, assigned_month) DO UPDATE SET
+        station_name_text = EXCLUDED.station_name_text,
+        station_code = EXCLUDED.station_code,
         assigned_by = EXCLUDED.assigned_by,
         remark = EXCLUDED.remark,
+        assigned_date = CURRENT_DATE,
         created_at = CURRENT_TIMESTAMP;
-    `, [period.period_id, em_code.trim(), station_code.trim(), month, assigned_by || 'ADMIN', remark || null]);
+    `, [period.period_id, em_code.trim(), finalText, finalCode, month, assigned_by || 'ADMIN', remark || null]);
 
-    // คำนวณคะแนนใหม่ทันทีเพื่อให้คะแนนบวกอัตโนมัติแสดงผลทันที!
+    // คำนวณคะแนนใหม่ทันที
     await scoringEngine.calculateScores({ emCode: em_code.trim() });
 
     res.json({
       success: true,
-      message: `บันทึกกำหนดพนักงาน (${emp.name_th}) ประจำจุดงานยากเรียบร้อยแล้ว (+คะแนนบวกอัตโนมัติรอบทุกเดือนแล้ว)`
+      message: `บันทึกจุดจ่ายงาน (${finalText}) ของคุณ ${emp.name_th} ประจำเดือน ${month} เรียบร้อยแล้ว`
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// 10.6 ยกเลิกพนักงานประจำจุดจ่ายงานยาก
+// 10.12 ลบรายการประจำจุดจ่ายงานรายเดือน
 app.delete('/api/kpi/station-assignments/:id', async (req, res) => {
   try {
+    await scoringEngine.ensureStationAssignmentSchema(pool);
     const { id } = req.params;
     const findRes = await pool.query(`SELECT em_code FROM kpi_employee_station_assignments WHERE assignment_id = $1;`, [id]);
     if (findRes.rows.length === 0) {
@@ -1359,7 +2085,7 @@ app.delete('/api/kpi/station-assignments/:id', async (req, res) => {
     await pool.query(`DELETE FROM kpi_employee_station_assignments WHERE assignment_id = $1;`, [id]);
     await scoringEngine.calculateScores({ emCode });
 
-    res.json({ success: true, message: 'ยกเลิกการประจำจุดจ่ายงานยากสำเร็จ (คำนวณคะแนนปรับปรุงใหม่แล้ว)' });
+    res.json({ success: true, message: 'ลบรายการประจำจุดจ่ายงานสำเร็จ (คำนวณคะแนนปรับปรุงใหม่แล้ว)' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -1375,5 +2101,6 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`💻 Desktop Admin Portal: http://localhost:${PORT}`);
   console.log(`📱 Mobile PWA Portal:   http://localhost:${PORT}/mobile.html`);
   console.log(`====================================================`);
+  scoringEngine.ensureStationAssignmentSchema(pool).catch(() => {});
   cloudSyncService.restartBackgroundTimers();
 });
